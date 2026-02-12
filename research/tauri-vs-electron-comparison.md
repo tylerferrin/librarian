@@ -148,7 +148,7 @@ Runtime:      Chromium + Node.js
 #### Tauri (Rust Backend)
 
 ```rust
-// src-tauri/src/midi.rs
+// tauri/src/midi.rs
 use midir::MidiOutputConnection;
 
 #[tauri::command]

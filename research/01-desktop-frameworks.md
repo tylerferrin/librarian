@@ -310,7 +310,7 @@ React Native macOS
 ### Tauri MIDI Setup
 
 ```rust
-// src-tauri/src/midi.rs
+// tauri/src/midi.rs
 use midir::{MidiOutput, MidiOutputConnection};
 
 #[tauri::command]

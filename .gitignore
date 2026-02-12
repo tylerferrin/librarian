@@ -20,8 +20,8 @@ target/
 Cargo.lock
 
 # Tauri
-src-tauri/target/
-src-tauri/Cargo.lock
+tauri/target/
+tauri/Cargo.lock
 
 # Editor
 .vscode/*

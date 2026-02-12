@@ -279,7 +279,7 @@ export const presetRepo = new PresetRepository();
 **Crate**: `rusqlite`
 
 ```rust
-// src-tauri/src/database.rs
+// tauri/src/database.rs
 use rusqlite::{Connection, Result, params};
 use serde::{Serialize, Deserialize};
 use std::path::PathBuf;
@@ -432,7 +432,7 @@ impl Database {
 ```
 
 ```rust
-// src-tauri/src/main.rs
+// tauri/src/main.rs
 use tauri::State;
 use std::sync::Mutex;
 

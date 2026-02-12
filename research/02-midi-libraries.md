@@ -62,7 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #### Tauri Integration
 
 ```rust
-// src-tauri/src/midi.rs
+// tauri/src/midi.rs
 use midir::{MidiOutput, MidiOutputConnection};
 use std::sync::Mutex;
 use tauri::State;
@@ -138,7 +138,7 @@ pub fn list_midi_ports() -> Result<Vec<String>, String> {
 ```
 
 ```rust
-// src-tauri/src/main.rs
+// tauri/src/main.rs
 mod midi;
 
 fn main() {

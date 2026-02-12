@@ -43,17 +43,10 @@ pnpm run tauri:dev
 
 ## Known Issues
 
-### Tauri Dev Server Crash
-The app currently crashes during Tauri initialization. This is a known issue being investigated. Possible causes:
-- Window configuration in `tauri.conf.json`
-- Icon file configuration
-- Tauri 2.0 + macOS compatibility
+### ✅ Tauri macOS Initialization Crash - FIXED
+**Status**: Fixed on February 12, 2026
 
-**Next Steps to Fix**:
-1. Simplify `tauri.conf.json` to minimal config
-2. Test with Tauri examples
-3. Update to latest Tauri 2.x patch version
-4. Check Tauri GitHub issues for similar crashes on macOS 15.6
+The app was crashing during Tauri window initialization on macOS 15.6. This has been resolved. See [troubleshooting guide](./docs/troubleshooting/macos-initialization-crash.md) for details.
 
 ## Project Structure
 
@@ -77,7 +70,7 @@ librarian/
 │   ├── hooks/                   # React hooks
 │   ├── styles/                  # Global styles
 │   └── App.tsx
-├── src-tauri/                   # Rust backend
+├── tauri/                   # Rust backend
 │   ├── src/
 │   │   ├── main.rs
 │   │   ├── lib.rs
@@ -96,9 +89,9 @@ librarian/
 - Research documentation complete
 
 ### 🔄 Phase 0.1: Fix Dev Environment (In Progress)
-- Resolve Tauri initialization crash
-- Test MIDI communication
-- Create first UI component
+- ✅ Resolve Tauri initialization crash
+- ⬜ Test MIDI communication
+- ⬜ Create first UI component
 
 ### ⬜ Phase 1: Gen Loss MKII MVP (8-12 weeks)
 - Map all Gen Loss MKII MIDI CCs
@@ -138,14 +131,11 @@ pnpm run lint               # Lint TS/React + Rust (when configured)
 
 ## Documentation
 
-See the `/research` folder for comprehensive technical documentation:
-
-- **[Technical Proposal](./research/technical-proposal.md)** - Complete architecture & implementation plan
-- **[Tauri vs Electron](./research/tauri-vs-electron-comparison.md)** - Framework comparison & decision rationale
-- **[Desktop Frameworks](./research/01-desktop-frameworks.md)** - Detailed framework analysis
-- **[MIDI Libraries](./research/02-midi-libraries.md)** - MIDI implementation guide
-- **[Storage Options](./research/03-storage-options.md)** - Database strategy
-- **[UI Frameworks](./research/04-ui-frameworks.md)** - UI component architecture
+- **[CHANGELOG](./CHANGELOG.md)** - Architectural changes and milestones
+- **[Product Vision](./product-vision.md)** - Product goals and roadmap
+- **[Documentation Hub](./docs/README.md)** - Technical docs and troubleshooting
+- **[Research](./research/README.md)** - Framework evaluations and technical research
+- **[AI Skills](./.cursor/README.md)** - Domain expert sub-agents for AI assistance
 
 ## Contributing
 
@@ -157,6 +147,6 @@ TBD
 
 ---
 
-**Current Status**: Development environment setup complete. Investigating Tauri initialization crash before proceeding with MIDI implementation.
+**Current Status**: Development environment setup complete. Tauri initialization crash fixed. Ready to proceed with MIDI implementation.
 
 **Last Updated**: 2026-02-12

@@ -159,7 +159,7 @@ librarian/
 │   │   └── usePresets.ts
 │   ├── App.tsx
 │   └── main.tsx
-├── src-tauri/                    # Rust backend
+├── tauri/                    # Rust backend
 │   ├── src/
 │   │   ├── main.rs               # Tauri app entry
 │   │   ├── midi/
@@ -221,7 +221,7 @@ npx tailwindcss init -p
 #### Core MIDI Module
 
 ```rust
-// src-tauri/src/midi/manager.rs
+// tauri/src/midi/manager.rs
 use midir::{MidiOutput, MidiOutputConnection};
 use std::sync::Mutex;
 
@@ -294,7 +294,7 @@ impl MidiManager {
 #### Tauri Commands
 
 ```rust
-// src-tauri/src/midi/commands.rs
+// tauri/src/midi/commands.rs
 use tauri::State;
 use super::manager::MidiManager;
 
@@ -365,7 +365,7 @@ export const midi = new MidiService();
 #### Schema
 
 ```rust
-// src-tauri/src/db.rs
+// tauri/src/db.rs
 use rusqlite::{Connection, Result};
 use std::path::PathBuf;
 
@@ -731,7 +731,7 @@ npx tailwindcss init -p
 ### Rust Dependencies
 
 ```toml
-# src-tauri/Cargo.toml
+# tauri/Cargo.toml
 [dependencies]
 tauri = { version = "2", features = ["shell-open"] }
 serde = { version = "1", features = ["derive"] }
@@ -783,7 +783,7 @@ describe('MidiService', () => {
 ```
 
 ```rust
-// src-tauri/src/midi/manager.rs
+// tauri/src/midi/manager.rs
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -855,8 +855,8 @@ mod tests {
 npm run tauri build
 
 # Output
-src-tauri/target/release/bundle/macos/Pedal Editor.app
-src-tauri/target/release/bundle/dmg/Pedal Editor_1.0.0_x64.dmg
+tauri/target/release/bundle/macos/Pedal Editor.app
+tauri/target/release/bundle/dmg/Pedal Editor_1.0.0_x64.dmg
 ```
 
 **Code Signing**: Required for distribution outside App Store
@@ -877,8 +877,8 @@ xcrun stapler staple "Pedal Editor.dmg"
 npm run tauri build
 
 # Output
-src-tauri/target/release/bundle/msi/Pedal Editor_1.0.0_x64.msi
-src-tauri/target/release/bundle/nsis/Pedal Editor_1.0.0_x64-setup.exe
+tauri/target/release/bundle/msi/Pedal Editor_1.0.0_x64.msi
+tauri/target/release/bundle/nsis/Pedal Editor_1.0.0_x64-setup.exe
 ```
 
 ---
