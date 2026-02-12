@@ -1,0 +1,44 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+dist-ssr/
+*.local
+
+# Rust/Cargo
+target/
+Cargo.lock
+
+# Tauri
+src-tauri/target/
+src-tauri/Cargo.lock
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.production.local
+.env.development.local
+
+# Database
+*.db
+*.db-shm
+*.db-wal
