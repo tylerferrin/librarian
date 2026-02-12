@@ -13,6 +13,10 @@ crate-type = ["staticlib", "cdylib", "lib"]
 name = "librarian"
 path = "src/main.rs"
 
+[[bin]]
+name = "test-midi-detection"
+path = "src/bin/test-midi-detection.rs"
+
 [build-dependencies]
 tauri-build = { version = "~2.5", features = [] }
 
