@@ -1,0 +1,96 @@
+---
+description: Backend module structure patterns for Librarian
+globs: tauri/src/**/*.rs
+alwaysApply: false
+---
+
+# Backend Architecture Standards
+
+## Module Structure
+
+Each bounded context uses this structure:
+
+```
+module_name/
+├── mod.rs          # Aggregate root with public API
+├── types.rs        # Domain entities and value objects
+├── mapper.rs       # Infrastructure (MIDI/protocol)
+└── repository.rs   # Infrastructure (database)
+```
+
+**Examples:** `midi/pedals/microcosm/`, `presets/`
+
+## File Responsibilities
+
+### types.rs - Domain Model
+- Entities (structs with identity)
+- Value objects (validated primitives)
+- Enums (domain concepts)
+- No I/O, no infrastructure
+
+### mod.rs - Aggregate Root
+- Public API for the module
+- Coordinates domain operations
+- Holds domain state
+
+### Infrastructure Files
+- `mapper.rs`: Protocol translation (MIDI CC mapping)
+- `repository.rs`: Persistence (SQLite, file I/O)
+- Separated from domain logic
+
+## Bounded Context Criteria
+
+Create new module when feature has:
+- Distinct aggregate root
+- Independent lifecycle
+- Separate domain language
+
+## Error Handling
+
+Use `thiserror` for domain errors:
+
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum DomainError {
+    #[error("Entity not found: {0}")]
+    NotFound(String),
+}
+```
+
+Use `Result<T, ModuleError>` for all public APIs.
+
+## Example Structure
+
+```rust
+// types.rs - Domain model
+pub struct MicrocosmState {
+    pub current_effect: EffectType,
+    pub activity: u8,
+    // ... 35 parameters
+}
+
+pub enum EffectType {
+    Glitch,
+    MicroLoop,
+    Granules,
+}
+
+// mod.rs - Aggregate root
+pub struct Microcosm {
+    pub state: MicrocosmState,
+    pub midi_channel: u8,
+}
+
+impl Microcosm {
+    pub fn update_state(&mut self, param: &MicrocosmParameter) {
+        // Domain logic
+    }
+}
+
+// mapper.rs - Infrastructure
+impl MicrocosmState {
+    pub fn to_cc_map(&self) -> HashMap<u8, u8> {
+        // Protocol translation
+    }
+}
+```

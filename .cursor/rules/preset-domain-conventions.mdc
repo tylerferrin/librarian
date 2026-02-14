@@ -1,0 +1,60 @@
+---
+description: Preset management domain conventions
+globs: tauri/src/presets/**/*.rs, src/lib/presets/**/*.ts, src/components/presets/**/*.tsx
+alwaysApply: false
+---
+
+# Preset Domain Conventions
+
+## Data Storage
+
+**Pedal state:** Store as JSON blob in `parameters` column
+
+```rust
+pub struct Preset {
+    pub id: String,
+    pub parameters: serde_json::Value,  // MicrocosmState, GenLossState, etc.
+}
+```
+
+**Validation:** Handle on deserialization, graceful fallback for schema changes
+
+## Bank Tracking
+
+**Principle:** App tracks only what it writes
+
+- Bank assignments are best-effort tracking
+- Manual pedal saves make tracking stale (expected)
+- No synchronization from pedal to app (MIDI read not supported)
+
+## MIDI Bank Save Timing
+
+Required delays for Microcosm:
+- 50ms after program change
+- 10ms between CC messages
+- 50ms before CC 46 (save)
+
+## Frontend Organization
+
+Mirrors backend structure:
+
+```
+src/lib/presets/       # API wrappers (like lib/midi/)
+src/components/presets/ # UI components (like components/pedals/)
+src/hooks/presets/     # React hooks (like hooks/pedals/)
+```
+
+## Naming Conventions
+
+- `PresetLibrary` - Aggregate root (backend)
+- `PresetRepository` - Persistence layer
+- `BankTracker` - Domain service
+- `usePresetLibrary` - React hook (frontend)
+
+## Bank Number Ranges
+
+**Microcosm user banks:** PC 45-60 (16 slots)
+- Bank 1: 45-48 (A-D) - Red
+- Bank 2: 49-52 (A-D) - Yellow
+- Bank 3: 53-56 (A-D) - Green
+- Bank 4: 57-60 (A-D) - Blue

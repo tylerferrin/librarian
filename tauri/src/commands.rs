@@ -4,6 +4,7 @@
 use crate::midi::{SharedMidiManager, ConnectedDevice, PedalType};
 use crate::midi::pedals::microcosm::{MicrocosmParameter, MicrocosmState};
 use crate::midi::pedals::gen_loss_mkii::{GenLossMkiiParameter, GenLossMkiiState};
+use crate::presets::{SharedPresetLibrary, Preset, PresetId, PresetFilter, BankSlot};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -96,6 +97,18 @@ pub async fn send_microcosm_parameter(
         .map_err(|e| e.to_string())
 }
 
+/// Send a program change to a Microcosm (select effect/preset)
+#[tauri::command]
+pub async fn send_microcosm_program_change(
+    manager: State<'_, SharedMidiManager>,
+    device_name: String,
+    program: u8,
+) -> Result<(), String> {
+    let mut manager = manager.lock().map_err(|e| e.to_string())?;
+    manager.send_microcosm_program_change(&device_name, program)
+        .map_err(|e| e.to_string())
+}
+
 /// Send a Gen Loss MKII parameter change
 #[tauri::command]
 pub async fn send_gen_loss_parameter(
@@ -162,4 +175,177 @@ pub async fn is_device_connected(
 ) -> Result<bool, String> {
     let manager = manager.lock().map_err(|e| e.to_string())?;
     Ok(manager.is_connected(&device_name))
+}
+
+// ===== Preset Management Commands =====
+
+/// Save a new preset
+#[tauri::command]
+pub async fn save_preset(
+    library: State<'_, SharedPresetLibrary>,
+    name: String,
+    pedal_type: String,
+    description: Option<String>,
+    parameters: serde_json::Value,
+    tags: Vec<String>,
+) -> Result<Preset, String> {
+    let library = library.lock().map_err(|e| e.to_string())?;
+    library.save_preset(name, pedal_type, description, parameters, tags)
+        .map_err(|e| e.to_string())
+}
+
+/// Update an existing preset
+#[tauri::command]
+pub async fn update_preset(
+    library: State<'_, SharedPresetLibrary>,
+    id: String,
+    name: Option<String>,
+    description: Option<String>,
+    tags: Option<Vec<String>>,
+    is_favorite: Option<bool>,
+) -> Result<Preset, String> {
+    let library = library.lock().map_err(|e| e.to_string())?;
+    let preset_id = PresetId::new(id);
+    library.update_preset(&preset_id, name, description, tags, is_favorite)
+        .map_err(|e| e.to_string())
+}
+
+/// Get a preset by ID
+#[tauri::command]
+pub async fn get_preset(
+    library: State<'_, SharedPresetLibrary>,
+    id: String,
+) -> Result<Preset, String> {
+    let library = library.lock().map_err(|e| e.to_string())?;
+    let preset_id = PresetId::new(id);
+    library.get_preset(&preset_id)
+        .map_err(|e| e.to_string())
+}
+
+/// List presets with optional filtering
+#[tauri::command]
+pub async fn list_presets(
+    library: State<'_, SharedPresetLibrary>,
+    pedal_type: Option<String>,
+    tags: Option<Vec<String>>,
+    is_favorite: Option<bool>,
+    search_query: Option<String>,
+) -> Result<Vec<Preset>, String> {
+    let library = library.lock().map_err(|e| e.to_string())?;
+    let filter = PresetFilter {
+        pedal_type,
+        tags: tags.unwrap_or_default(),
+        is_favorite,
+        search_query,
+    };
+    library.list_presets(filter)
+        .map_err(|e| e.to_string())
+}
+
+/// Delete a preset
+#[tauri::command]
+pub async fn delete_preset(
+    library: State<'_, SharedPresetLibrary>,
+    id: String,
+) -> Result<(), String> {
+    let library = library.lock().map_err(|e| e.to_string())?;
+    let preset_id = PresetId::new(id);
+    library.delete_preset(&preset_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Toggle favorite status
+#[tauri::command]
+pub async fn toggle_favorite(
+    library: State<'_, SharedPresetLibrary>,
+    id: String,
+) -> Result<Preset, String> {
+    let library = library.lock().map_err(|e| e.to_string())?;
+    let preset_id = PresetId::new(id);
+    library.toggle_favorite(&preset_id)
+        .map_err(|e| e.to_string())
+}
+
+/// Get the state of all pedal banks
+#[tauri::command]
+pub async fn get_bank_state(
+    library: State<'_, SharedPresetLibrary>,
+    pedal_type: String,
+) -> Result<Vec<BankSlot>, String> {
+    println!("🔍 get_bank_state called with pedal_type: {}", pedal_type);
+    let library = library.lock().map_err(|e| e.to_string())?;
+    let result = library.get_bank_state(&pedal_type)
+        .map_err(|e| e.to_string())?;
+    println!("📦 get_bank_state returning {} bank slots", result.len());
+    Ok(result)
+}
+
+/// Assign a preset to a specific bank
+#[tauri::command]
+pub async fn assign_to_bank(
+    library: State<'_, SharedPresetLibrary>,
+    pedal_type: String,
+    bank_number: u8,
+    preset_id: String,
+) -> Result<(), String> {
+    let library = library.lock().map_err(|e| e.to_string())?;
+    let id = PresetId::new(preset_id);
+    library.assign_to_bank(&pedal_type, bank_number, &id)
+        .map_err(|e| e.to_string())
+}
+
+/// Save a preset to a specific pedal bank (recalls preset, then sends CC 46 to save)
+#[tauri::command]
+pub async fn save_preset_to_bank(
+    midi_manager: State<'_, SharedMidiManager>,
+    library: State<'_, SharedPresetLibrary>,
+    device_name: String,
+    preset_id: String,
+    bank_number: u8,
+) -> Result<(), String> {
+    // Get the preset
+    let id = PresetId::new(preset_id.clone());
+    let preset = {
+        let library = library.lock().map_err(|e| e.to_string())?;
+        library.get_preset(&id).map_err(|e| e.to_string())?
+    };
+    
+    // Send program change to switch to the target bank
+    {
+        let mut manager = midi_manager.lock().map_err(|e| e.to_string())?;
+        manager.send_microcosm_program_change(&device_name, bank_number)
+            .map_err(|e| e.to_string())?;
+    }
+    
+    // Wait for pedal to switch banks
+    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+    
+    // Deserialize and send all parameters
+    let state: MicrocosmState = serde_json::from_value(preset.parameters.clone())
+        .map_err(|e| format!("Failed to deserialize preset parameters: {}", e))?;
+    
+    {
+        let mut manager = midi_manager.lock().map_err(|e| e.to_string())?;
+        manager.recall_microcosm_preset(&device_name, &state)
+            .map_err(|e| e.to_string())?;
+    }
+    
+    // Wait for parameters to apply
+    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+    
+    // Send CC 46 (Preset Save) to save to pedal
+    {
+        let mut manager = midi_manager.lock().map_err(|e| e.to_string())?;
+        manager.send_microcosm_parameter(&device_name, MicrocosmParameter::PresetSave)
+            .map_err(|e| e.to_string())?;
+    }
+    
+    // Update bank assignment in database
+    {
+        let library = library.lock().map_err(|e| e.to_string())?;
+        library.assign_to_bank(&preset.pedal_type, bank_number, &id)
+            .map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
 }

@@ -7,16 +7,37 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Dark mode color scheme for music production
-        'app-bg': '#0f0f0f',
-        'panel-bg': '#1a1a1a',
-        'control-bg': '#2d2d2d',
+        // Semantic theme colors - Light theme
+        'app-bg': '#f5f5f5',
+        'card-bg': '#ffffff',
+        'card-header': '#f9fafb',
+        'control-bg': '#f9fafb',
+        'control-border': '#d1d5db',
+        'control-hover': '#f3f4f6',
+        
+        // Borders and dividers
+        'border-light': '#e5e7eb',
+        'border-default': '#d1d5db',
+        
+        // Text colors
+        'text-primary': '#111827',
+        'text-secondary': '#4b5563',
+        'text-muted': '#6b7280',
+        
+        // Accent colors
         'accent-blue': '#3b82f6',
         'accent-green': '#10b981',
         'accent-red': '#ef4444',
-        'text-primary': '#e5e5e5',
-        'text-secondary': '#a3a3a3',
-        'text-muted': '#525252',
+        'accent-purple': '#a855f7',
+        'accent-cyan': '#06b6d4',
+        'accent-amber': '#f59e0b',
+        'accent-rose': '#f43f5e',
+        
+        // State colors
+        'success': '#10b981',
+        'warning': '#f59e0b',
+        'error': '#ef4444',
+        'info': '#3b82f6',
       },
     },
   },

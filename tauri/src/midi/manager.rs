@@ -6,7 +6,7 @@ use crate::midi::pedals::{Microcosm, GenLossMkii};
 use crate::midi::pedals::microcosm::{MicrocosmParameter, MicrocosmState};
 use crate::midi::pedals::gen_loss_mkii::{GenLossMkiiParameter, GenLossMkiiState};
 
-use midir::{MidiInput, MidiOutput, MidiOutputConnection};
+use midir::{MidiOutput, MidiOutputConnection};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -53,6 +53,25 @@ impl MidiConnection {
         
         Ok(())
     }
+    
+    /// Send a Program Change message
+    fn send_program_change(&mut self, program: u8) -> MidiResult<()> {
+        // MIDI Program Change format: [Status byte, Program number]
+        // Status byte = 0xC0 + (channel - 1)
+        let status = 0xC0 + (self.midi_channel - 1);
+        let message = [status, program];
+        
+        println!("📤 Sending MIDI Program Change: Channel {}, Program {} (bytes: [{:#04X}, {:#04X}])", 
+            self.midi_channel, program, status, program);
+        
+        self.output
+            .send(&message)
+            .map_err(|e| MidiError::SendFailed(e.to_string()))?;
+        
+        println!("✅ MIDI Program Change sent successfully");
+        
+        Ok(())
+    }
 }
 
 /// Device-specific connection wrapper
@@ -70,21 +89,17 @@ enum DeviceConnection {
 /// Central MIDI Manager for all device communication
 pub struct MidiManager {
     connections: HashMap<String, DeviceConnection>,
-    midi_input: Option<MidiInput>,
     midi_output: Option<MidiOutput>,
 }
 
 impl MidiManager {
     /// Create a new MIDI Manager
     pub fn new() -> MidiResult<Self> {
-        let midi_input = MidiInput::new("Librarian Input")
-            .map_err(|e| MidiError::Other(e.to_string()))?;
         let midi_output = MidiOutput::new("Librarian Output")
             .map_err(|e| MidiError::Other(e.to_string()))?;
         
         Ok(Self {
             connections: HashMap::new(),
-            midi_input: Some(midi_input),
             midi_output: Some(midi_output),
         })
     }
@@ -244,6 +259,25 @@ impl MidiManager {
                 connection.send_cc(cc_number, cc_value)?;
                 state.update_state(&param);
                 
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Microcosm".to_string())),
+        }
+    }
+    
+    /// Send a program change to a Microcosm (select effect/preset)
+    pub fn send_microcosm_program_change(
+        &mut self,
+        device_name: &str,
+        program: u8,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        
+        match device {
+            DeviceConnection::Microcosm { connection, state } => {
+                connection.send_program_change(program)?;
+                state.set_current_preset(program);
                 Ok(())
             }
             _ => Err(MidiError::Other("Device is not a Microcosm".to_string())),

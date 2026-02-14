@@ -49,6 +49,31 @@ Specialized AI agents for different aspects of the Librarian project.
 
 ---
 
+### 🎨 UI Engineer
+```
+@engineer-ui
+```
+
+**Specialization**: Design system enforcement, component styling consistency  
+**Knowledge Areas**:
+- Light theme color palette and semantic tokens
+- Modal/dialog patterns with guaranteed visibility
+- Button styling with explicit inline styles
+- Form input patterns and spacing standards
+- Card and drawer component structures
+- Responsive design patterns
+
+**When to use**:
+- Creating ANY new UI component (modals, dialogs, cards, buttons)
+- Fixing styling issues (invisible buttons, wrong colors)
+- Updating existing UI components
+- Design inconsistency reported by user
+- Need to ensure consistent design system application
+
+**Critical**: This skill MUST be used for all UI work to prevent invisible buttons and inconsistent styling.
+
+---
+
 ### 🎹 MIDI Engineer
 ```
 @engineer-midi
