@@ -41,9 +41,15 @@ impl MidiConnection {
         let status = 0xB0 + (self.midi_channel - 1);
         let message = [status, cc_number, value];
         
+        // Debug logging
+        println!("📤 Sending MIDI: Channel {}, CC {}, Value {} (bytes: [{:#04X}, {:#04X}, {:#04X}])", 
+            self.midi_channel, cc_number, value, status, cc_number, value);
+        
         self.output
             .send(&message)
             .map_err(|e| MidiError::SendFailed(e.to_string()))?;
+        
+        println!("✅ MIDI sent successfully");
         
         Ok(())
     }
@@ -147,6 +153,8 @@ impl MidiManager {
             device_name.to_string(),
             DeviceConnection::Microcosm { connection, state },
         );
+        
+        println!("✅ Connected to Microcosm: '{}' on MIDI Channel {}", device_name, midi_channel);
         
         // Reinitialize MIDI output for future connections
         self.midi_output = Some(MidiOutput::new("Librarian Output")

@@ -23,16 +23,56 @@ fn main() {
             println!("  • Input ports found:  {}", inputs.len());
             println!("  • Output ports found: {}", outputs.len());
             
-            // Check for supported pedals
+            // Check for Bluetooth MIDI adapters
             println!();
-            println!("Searching for supported pedals...");
+            println!("Searching for MIDI devices...");
             println!();
             
             let mut found_gen_loss = false;
             let mut found_microcosm = false;
+            let mut found_bluetooth_adapter = false;
+            let mut bluetooth_adapters = Vec::new();
             
-            // Search for Gen Loss MKII
-            println!("🔍 Chase Bliss Gen Loss MKII:");
+            // Search for Bluetooth MIDI adapters first
+            println!("🔍 Bluetooth MIDI Adapters:");
+            for device in inputs.iter().chain(outputs.iter()) {
+                let name_lower = device.name.to_lowercase();
+                
+                // Check for common Bluetooth adapter names
+                if name_lower.contains("widi") ||
+                   name_lower.contains("ble") ||
+                   (name_lower.contains("bluetooth") && name_lower.contains("midi")) ||
+                   name_lower.contains("bt-midi") {
+                    if !bluetooth_adapters.contains(&device.name) {
+                        println!("  ✓ Found: {} ({})", 
+                            device.name, 
+                            if device.is_input { "Input" } else { "Output" }
+                        );
+                        bluetooth_adapters.push(device.name.clone());
+                        found_bluetooth_adapter = true;
+                    }
+                }
+            }
+            
+            if found_bluetooth_adapter {
+                println!();
+                println!("  💡 Bluetooth adapters show their own names, not the pedal names.");
+                println!("     Your pedal (Microcosm, Gen Loss, etc.) is connected to the adapter.");
+                println!();
+                println!("  📝 When connecting from the app, use the adapter name:");
+                for adapter_name in &bluetooth_adapters {
+                    println!("     → \"{}\"", adapter_name);
+                }
+            } else {
+                println!("  ⚠ No Bluetooth MIDI adapters detected");
+            }
+            
+            println!();
+            println!("─────────────────────────────────────────────────────────");
+            
+            // Search for Gen Loss MKII (direct USB connection)
+            println!();
+            println!("🔍 Chase Bliss Gen Loss MKII (USB):");
             for device in inputs.iter().chain(outputs.iter()) {
                 let name_lower = device.name.to_lowercase();
                 if (name_lower.contains("gen") && name_lower.contains("loss")) ||
@@ -46,12 +86,12 @@ fn main() {
             }
             if !found_gen_loss {
                 println!("  ⚠ Not detected");
-                println!("    (USB connection required)");
+                println!("    (Requires direct USB connection)");
             }
             
-            // Search for Hologram Microcosm
+            // Search for Hologram Microcosm (direct USB connection)
             println!();
-            println!("🔍 Hologram Microcosm:");
+            println!("🔍 Hologram Microcosm (USB):");
             for device in inputs.iter().chain(outputs.iter()) {
                 let name_lower = device.name.to_lowercase();
                 if name_lower.contains("microcosm") ||
@@ -65,16 +105,29 @@ fn main() {
             }
             if !found_microcosm {
                 println!("  ⚠ Not detected");
-                println!("    (USB or Bluetooth MIDI connection required)");
+                println!("    (Direct USB connection, or use Bluetooth adapter above)");
             }
             
             println!();
-            if !found_gen_loss && !found_microcosm {
-                println!("💡 Tips:");
+            println!("─────────────────────────────────────────────────────────");
+            println!();
+            
+            // Provide helpful next steps
+            if found_bluetooth_adapter {
+                println!("✅ Ready to test MIDI communication!");
+                println!();
+                println!("Next steps:");
+                println!("  1. Launch the app: pnpm run tauri dev");
+                println!("  2. Open browser DevTools (Cmd+Option+I)");
+                println!("  3. See docs/midi/testing-guide.md for test commands");
+                println!("  4. Or use docs/midi/quick-test-commands.js for ready-to-paste tests");
+            } else if !found_gen_loss && !found_microcosm {
+                println!("💡 Connection Tips:");
                 println!("  • Make sure pedals are powered on");
-                println!("  • For USB: Check cable connection");
+                println!("  • For USB: Check cable connection directly to pedal");
                 println!("  • For Bluetooth: Pair WIDI adapter in macOS Bluetooth settings first");
-                println!("  • See docs/midi/ for setup guides");
+                println!("  • See docs/midi/bluetooth-midi-setup.md for detailed setup");
+                println!("  • See docs/midi/macos-setup.md for USB setup");
             }
 
             println!();

@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "A cross-platform editor and librarian for modern boutique pedals"
 authors = ["you"]
 edition = "2021"
+default-run = "librarian"
 
 [lib]
 name = "librarian_lib"
@@ -16,6 +17,10 @@ path = "src/main.rs"
 [[bin]]
 name = "test-midi-detection"
 path = "src/bin/test-midi-detection.rs"
+
+[[bin]]
+name = "test-midi-input"
+path = "src/bin/test-midi-input.rs"
 
 [build-dependencies]
 tauri-build = { version = "~2.5", features = [] }
