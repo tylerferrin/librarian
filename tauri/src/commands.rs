@@ -203,10 +203,11 @@ pub async fn update_preset(
     description: Option<String>,
     tags: Option<Vec<String>>,
     is_favorite: Option<bool>,
+    parameters: Option<serde_json::Value>,
 ) -> Result<Preset, String> {
     let library = library.lock().map_err(|e| e.to_string())?;
     let preset_id = PresetId::new(id);
-    library.update_preset(&preset_id, name, description, tags, is_favorite)
+    library.update_preset(&preset_id, name, description, tags, is_favorite, parameters)
         .map_err(|e| e.to_string())
 }
 

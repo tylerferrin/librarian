@@ -86,6 +86,7 @@ impl PresetLibrary {
         description: Option<String>,
         tags: Option<Vec<String>>,
         is_favorite: Option<bool>,
+        parameters: Option<serde_json::Value>,
     ) -> Result<Preset> {
         let mut preset = self
             .repository
@@ -93,6 +94,10 @@ impl PresetLibrary {
             .ok_or_else(|| PresetError::NotFound {
                 id: id.to_string(),
             })?;
+        
+        if let Some(parameters) = parameters {
+            preset.parameters = parameters;
+        }
         
         if let Some(name) = name {
             let trimmed_name = name.trim().to_string();
