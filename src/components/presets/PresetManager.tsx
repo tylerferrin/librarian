@@ -14,7 +14,10 @@ interface PresetManagerProps {
   deviceName: string;
   pedalType: string;
   currentState: MicrocosmState | any;
+  activePresetId?: string | null;
   onLoadPreset?: (state: MicrocosmState, presetId?: string, presetName?: string) => Promise<void>;
+  onPresetSaved?: (presetId: string, presetName: string) => void;
+  onPresetCleared?: () => void;
 }
 
 export function PresetManager({
@@ -23,7 +26,10 @@ export function PresetManager({
   deviceName,
   pedalType,
   currentState,
+  activePresetId,
   onLoadPreset,
+  onPresetSaved,
+  onPresetCleared,
 }: PresetManagerProps) {
   const [banks, setBanks] = useState<BankSlot[]>([]);
   const [loading, setLoading] = useState(true);
@@ -156,6 +162,11 @@ export function PresetManager({
 
       await savePresetToBank(deviceName, preset.id, savingToBank);
 
+      // Update active preset tracking
+      if (onPresetSaved) {
+        onPresetSaved(preset.id, preset.name);
+      }
+
       // Reset and reload
       setSavingToBank(null);
       setPresetName('');
@@ -204,7 +215,14 @@ export function PresetManager({
     if (!confirmDelete) return;
 
     try {
-      await deletePreset(confirmDelete.id);
+      const deletedPresetId = confirmDelete.id;
+      await deletePreset(deletedPresetId);
+      
+      // If we deleted the active preset, clear it from the editor
+      if (activePresetId === deletedPresetId && onPresetCleared) {
+        onPresetCleared();
+      }
+      
       setConfirmDelete(null);
       await loadBanks();
     } catch (error) {
@@ -225,7 +243,7 @@ export function PresetManager({
 
       {/* Drawer */}
       <div
-        className={`fixed right-0 top-0 h-full shadow-xl w-full md:w-1/2 border-l border-border-light transition-transform duration-300 ease-in-out ${
+        className={`fixed right-0 top-0 h-full shadow-xl w-full md:w-[35%] border-l border-border-light transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
         style={{ zIndex: 9999, backgroundColor: '#ffffff' }}

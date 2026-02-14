@@ -42,4 +42,5 @@ export interface UpdatePresetParams {
   description?: string;
   tags?: string[];
   isFavorite?: boolean;
+  parameters?: any; // Updated pedal state
 }

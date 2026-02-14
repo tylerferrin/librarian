@@ -1,6 +1,38 @@
 @import "tailwindcss";
 
-/* All theme colors are now defined in tailwind.config.js */
+@theme {
+  /* Semantic theme colors - Light theme */
+  --color-app-bg: #f5f5f5;
+  --color-card-bg: #ffffff;
+  --color-card-header: #f9fafb;
+  --color-control-bg: #f9fafb;
+  --color-control-border: #d1d5db;
+  --color-control-hover: #f3f4f6;
+  
+  /* Borders and dividers */
+  --color-border-light: #e5e7eb;
+  --color-border-default: #d1d5db;
+  
+  /* Text colors */
+  --color-text-primary: #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-muted: #6b7280;
+  
+  /* Accent colors */
+  --color-accent-blue: #3b82f6;
+  --color-accent-green: #10b981;
+  --color-accent-red: #ef4444;
+  --color-accent-purple: #a855f7;
+  --color-accent-cyan: #06b6d4;
+  --color-accent-amber: #f59e0b;
+  --color-accent-rose: #f43f5e;
+  
+  /* State colors */
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #3b82f6;
+}
 
 /* Gradient wave animation for modified preset indicator */
 @keyframes gradient-wave {

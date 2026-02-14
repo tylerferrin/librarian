@@ -25,6 +25,7 @@ export async function updatePreset(params: UpdatePresetParams): Promise<Preset> 
     description: params.description,
     tags: params.tags,
     isFavorite: params.isFavorite,
+    parameters: params.parameters,
   });
 }
 
