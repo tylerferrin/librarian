@@ -1,7 +1,9 @@
 import { useState, useCallback } from 'react';
 import * as midiCommon from '../lib/midi';
 import { connectMicrocosm } from '../lib/midi/pedals/microcosm';
-import type { DeviceInfo } from '../lib/midi';
+import { connectGenLossMkii } from '../lib/midi/pedals/gen-loss-mkii';
+import { connectChromaConsole } from '../lib/midi/pedals/chroma_console';
+import type { DeviceInfo, PedalType } from '../lib/midi';
 
 export function useMIDIConnection() {
   const [devices, setDevices] = useState<string[]>([]);
@@ -25,13 +27,25 @@ export function useMIDIConnection() {
     }
   }, []);
 
-  const connect = useCallback(async (deviceName: string, channel: number = 1) => {
+  const connect = useCallback(async (deviceName: string, channel: number = 1, pedalType: PedalType = 'Microcosm') => {
     setIsConnecting(true);
     setError(null);
 
     try {
-      // For now, we'll assume Microcosm - in the future we can detect pedal type
-      await connectMicrocosm(deviceName, channel);
+      // Call the appropriate connect function based on pedal type
+      switch (pedalType) {
+        case 'Microcosm':
+          await connectMicrocosm(deviceName, channel);
+          break;
+        case 'GenLossMkii':
+          await connectGenLossMkii(deviceName, channel);
+          break;
+        case 'ChromaConsole':
+          await connectChromaConsole(deviceName, channel);
+          break;
+        default:
+          throw new Error(`Unknown pedal type: ${pedalType}`);
+      }
       
       // Verify connection by getting connected devices
       const connectedDevices = await midiCommon.listConnectedDevices();

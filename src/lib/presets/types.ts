@@ -44,3 +44,11 @@ export interface UpdatePresetParams {
   isFavorite?: boolean;
   parameters?: any; // Updated pedal state
 }
+
+/**
+ * Preset with bank assignment information.
+ * Used by the library drawer to show which banks a preset is loaded into.
+ */
+export interface PresetWithBanks extends Preset {
+  bankNumbers: number[]; // Bank slots this preset is assigned to (45-60)
+}

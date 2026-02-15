@@ -1,10 +1,11 @@
 // Tauri commands for frontend integration
 // These functions are exposed to the frontend via IPC
 
-use crate::midi::{SharedMidiManager, ConnectedDevice, PedalType};
+use crate::midi::{SharedMidiManager, ConnectedDevice, PedalType, request_device_identity, DeviceIdentity};
 use crate::midi::pedals::microcosm::{MicrocosmParameter, MicrocosmState};
 use crate::midi::pedals::gen_loss_mkii::{GenLossMkiiParameter, GenLossMkiiState};
-use crate::presets::{SharedPresetLibrary, Preset, PresetId, PresetFilter, BankSlot};
+use crate::midi::pedals::chroma_console::{ChromaConsoleParameter, ChromaConsoleState};
+use crate::presets::{SharedPresetLibrary, Preset, PresetId, PresetFilter, BankSlot, PresetWithBanks};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -23,6 +24,7 @@ impl From<ConnectedDevice> for DeviceInfo {
             pedal_type: match device.pedal_type {
                 PedalType::Microcosm => "Microcosm".to_string(),
                 PedalType::GenLossMkii => "GenLossMkii".to_string(),
+                PedalType::ChromaConsole => "ChromaConsole".to_string(),
             },
             midi_channel: device.midi_channel,
         }
@@ -62,6 +64,18 @@ pub async fn connect_gen_loss_mkii(
         .map_err(|e| e.to_string())
 }
 
+/// Connect to a Chroma Console pedal
+#[tauri::command]
+pub async fn connect_chroma_console(
+    manager: State<'_, SharedMidiManager>,
+    device_name: String,
+    midi_channel: u8,
+) -> Result<(), String> {
+    let mut manager = manager.lock().map_err(|e| e.to_string())?;
+    manager.connect_chroma_console(&device_name, midi_channel)
+        .map_err(|e| e.to_string())
+}
+
 /// Disconnect from a device
 #[tauri::command]
 pub async fn disconnect_device(
@@ -83,6 +97,56 @@ pub async fn list_connected_devices(
         .into_iter()
         .map(DeviceInfo::from)
         .collect())
+}
+
+/// Device identity information for frontend
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceIdentityInfo {
+    pub manufacturer_id: Vec<u8>,
+    pub manufacturer_name: Option<String>,
+    pub device_family: u16,
+    pub device_model: u16,
+    pub software_version: Vec<u8>,
+    pub description: String,
+}
+
+impl From<DeviceIdentity> for DeviceIdentityInfo {
+    fn from(identity: DeviceIdentity) -> Self {
+        Self {
+            manufacturer_id: identity.manufacturer_id.clone(),
+            manufacturer_name: identity.manufacturer_name().map(|s| s.to_string()),
+            device_family: identity.device_family,
+            device_model: identity.device_model,
+            software_version: identity.software_version.clone(),
+            description: identity.description(),
+        }
+    }
+}
+
+/// Request device identity using MIDI Universal Device Inquiry
+#[tauri::command]
+pub async fn request_midi_device_identity(
+    device_name: String,
+    timeout_ms: Option<u64>,
+) -> Result<Option<DeviceIdentityInfo>, String> {
+    let timeout = timeout_ms.unwrap_or(2000); // Default 2 second timeout
+    
+    println!("🔍 Frontend requested device identity for: {}", device_name);
+    
+    match request_device_identity(&device_name, timeout) {
+        Ok(Some(identity)) => {
+            println!("✅ Got device identity: {}", identity.description());
+            Ok(Some(DeviceIdentityInfo::from(identity)))
+        }
+        Ok(None) => {
+            println!("⏱️ No response from device (timeout)");
+            Ok(None)
+        }
+        Err(e) => {
+            eprintln!("❌ Error requesting device identity: {}", e);
+            Err(e.to_string())
+        }
+    }
 }
 
 /// Send a Microcosm parameter change
@@ -164,6 +228,41 @@ pub async fn recall_gen_loss_preset(
 ) -> Result<(), String> {
     let mut manager = manager.lock().map_err(|e| e.to_string())?;
     manager.recall_gen_loss_preset(&device_name, &state)
+        .map_err(|e| e.to_string())
+}
+
+/// Send a Chroma Console parameter change
+#[tauri::command]
+pub async fn send_chroma_console_parameter(
+    manager: State<'_, SharedMidiManager>,
+    device_name: String,
+    param: ChromaConsoleParameter,
+) -> Result<(), String> {
+    let mut manager = manager.lock().map_err(|e| e.to_string())?;
+    manager.send_chroma_console_parameter(&device_name, param)
+        .map_err(|e| e.to_string())
+}
+
+/// Get current Chroma Console state
+#[tauri::command]
+pub async fn get_chroma_console_state(
+    manager: State<'_, SharedMidiManager>,
+    device_name: String,
+) -> Result<ChromaConsoleState, String> {
+    let manager = manager.lock().map_err(|e| e.to_string())?;
+    manager.get_chroma_console_state(&device_name)
+        .map_err(|e| e.to_string())
+}
+
+/// Recall a Chroma Console preset (send all parameters)
+#[tauri::command]
+pub async fn recall_chroma_console_preset(
+    manager: State<'_, SharedMidiManager>,
+    device_name: String,
+    state: ChromaConsoleState,
+) -> Result<(), String> {
+    let mut manager = manager.lock().map_err(|e| e.to_string())?;
+    manager.recall_chroma_console_preset(&device_name, &state)
         .map_err(|e| e.to_string())
 }
 
@@ -292,6 +391,17 @@ pub async fn assign_to_bank(
     let library = library.lock().map_err(|e| e.to_string())?;
     let id = PresetId::new(preset_id);
     library.assign_to_bank(&pedal_type, bank_number, &id)
+        .map_err(|e| e.to_string())
+}
+
+/// Get all presets with their bank assignments (for library drawer)
+#[tauri::command]
+pub async fn get_presets_with_banks(
+    library: State<'_, SharedPresetLibrary>,
+    pedal_type: String,
+) -> Result<Vec<PresetWithBanks>, String> {
+    let library = library.lock().map_err(|e| e.to_string())?;
+    library.get_presets_with_banks(&pedal_type)
         .map_err(|e| e.to_string())
 }
 

@@ -8,6 +8,8 @@ interface KnobProps {
   onChange: (value: number) => void;
   size?: number;
   className?: string;
+  /** Color for the arc and indicator (hex or rgb) */
+  color?: string;
 }
 
 const START_ANGLE = -135;
@@ -27,6 +29,7 @@ export function Knob({
   onChange,
   size = 64,
   className = '',
+  color = 'rgb(59, 130, 246)', // Default blue
 }: KnobProps) {
   const knobRef = useRef<SVGSVGElement>(null);
   const isDragging = useRef(false);
@@ -149,7 +152,7 @@ export function Knob({
           <path
             d={arcPath}
             fill="none"
-            stroke="rgb(59, 130, 246)"
+            stroke={color}
             strokeWidth={2.5}
             strokeLinecap="round"
           />
@@ -171,7 +174,7 @@ export function Knob({
           y1={lineY1}
           x2={lineX2}
           y2={lineY2}
-          stroke="rgb(59, 130, 246)"
+          stroke={color}
           strokeWidth={2.5}
           strokeLinecap="round"
         />
@@ -182,7 +185,10 @@ export function Knob({
         {label}
       </span>
       {/* Value */}
-      <span className="text-[10px] text-accent-blue font-mono tabular-nums font-semibold">
+      <span 
+        className="text-[10px] font-mono tabular-nums font-semibold"
+        style={{ color }}
+      >
         {value}
       </span>
     </div>

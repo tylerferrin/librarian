@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Save, GripVertical } from 'lucide-react';
+import { Save, GripVertical, Library } from 'lucide-react';
 import { 
   DndContext, 
   closestCenter, 
@@ -21,7 +21,7 @@ import { useMicrocosmEditor } from '../../../hooks/pedals/microcosm/useMicrocosm
 import { Knob, Toggle, TapButton, GridSelector } from '../../common';
 import { ParameterCard } from '../../common/ParameterCard';
 import { EffectSelector } from './EffectSelector';
-import { PresetManager } from '../../presets';
+import { PresetManager, SaveToLibraryDialog } from '../../presets';
 import type { SubdivisionValue, PlaybackDirection, LooperRouting } from '../../../lib/midi/pedals/microcosm';
 
 interface MicrocosmEditorProps {
@@ -102,6 +102,9 @@ export function MicrocosmEditor({ deviceName }: MicrocosmEditorProps) {
   // Preset Manager state
   const [managerOpen, setManagerOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
+  
+  // Save to Library Dialog state
+  const [libraryDialogOpen, setLibraryDialogOpen] = useState(false);
 
   // Parameter card order state
   const [cardOrder, setCardOrder] = useState<ParameterCardId[]>(() => {
@@ -184,6 +187,14 @@ export function MicrocosmEditor({ deviceName }: MicrocosmEditorProps) {
       console.error('❌ Failed to update preset:', error);
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const handleLibrarySaved = async (presetId: string, presetName: string) => {
+    console.log('✅ Saved to library:', presetName);
+    // Set the newly saved preset as active (clean state)
+    if (state) {
+      await loadPreset(state, presetId, presetName);
     }
   };
 
@@ -406,26 +417,38 @@ export function MicrocosmEditor({ deviceName }: MicrocosmEditorProps) {
                 <span className="text-sm font-medium text-text-primary">
                   {activePreset.name}
                 </span>
-                <span className={`text-xs font-medium px-2 py-0.5 rounded transition-all duration-500 ${isDirty ? 'opacity-100 bg-accent-red/10 border border-accent-red/30 text-accent-red' : 'opacity-0 bg-warning/10 border border-warning/30 text-warning'}`}>
-                  Modified
-                </span>
+                {isDirty && (
+                  <span className="text-xs font-medium px-2 py-0.5 rounded transition-all duration-500 bg-accent-red/10 border border-accent-red/30 text-accent-red">
+                    Modified
+                  </span>
+                )}
               </div>
-              <button
-                onClick={handleUpdatePreset}
-                disabled={!isDirty || updating}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all disabled:opacity-50 ${isDirty ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                style={{ backgroundColor: '#10b981', color: '#ffffff' }}
-              >
-                <Save className="w-3 h-3" />
-                {updating ? 'Updating...' : 'Update'}
-              </button>
-              <button
-                onClick={resetToPreset}
-                disabled={!isDirty}
-                className={`px-3 py-1.5 text-xs font-medium border border-control-border rounded-md bg-card-bg text-text-primary hover:bg-control-hover transition-all duration-500 ${isDirty ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-              >
-                Reset
-              </button>
+              {isDirty && (
+                <>
+                  <button
+                    onClick={handleUpdatePreset}
+                    disabled={updating}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all disabled:opacity-50"
+                    style={{ backgroundColor: '#10b981', color: '#ffffff' }}
+                  >
+                    <Save className="w-3 h-3" />
+                    {updating ? 'Updating...' : 'Update'}
+                  </button>
+                  <button
+                    onClick={() => setLibraryDialogOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-accent-blue/10 hover:bg-accent-blue/20 border border-accent-blue/30 text-accent-blue transition-all"
+                  >
+                    <Library className="w-3 h-3" />
+                    Save to Library
+                  </button>
+                  <button
+                    onClick={resetToPreset}
+                    className="px-3 py-1.5 text-xs font-medium border border-control-border rounded-md bg-card-bg text-text-primary hover:bg-control-hover transition-all duration-500"
+                  >
+                    Reset
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -453,6 +476,11 @@ export function MicrocosmEditor({ deviceName }: MicrocosmEditorProps) {
           activeColor="red"
         />
         <div className="flex-1" />
+        <TapButton
+          label="Save Preset"
+          onTap={() => setLibraryDialogOpen(true)}
+          variant="accent"
+        />
         <TapButton
           label="Preset Manager"
           onTap={() => setManagerOpen(true)}
@@ -586,6 +614,15 @@ export function MicrocosmEditor({ deviceName }: MicrocosmEditorProps) {
           // Clear the active preset when deleted
           editor.clearActivePreset();
         }}
+      />
+
+      {/* Save to Library Dialog */}
+      <SaveToLibraryDialog
+        isOpen={libraryDialogOpen}
+        onClose={() => setLibraryDialogOpen(false)}
+        pedalType="Microcosm"
+        currentState={state}
+        onSaved={handleLibrarySaved}
       />
     </>
   );

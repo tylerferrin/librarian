@@ -1,12 +1,13 @@
 // Preset Manager - unified interface for managing all 16 preset banks
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, Play, Trash2, AlertCircle } from 'lucide-react';
+import { X, Save, Play, Trash2, AlertCircle, Library } from 'lucide-react';
 import { getBankState, savePreset, savePresetToBank, deletePreset } from '@/lib/presets';
 import type { BankSlot, Preset } from '@/lib/presets/types';
 import type { MicrocosmState } from '@/lib/midi/pedals/microcosm/types';
 import { recallMicrocosmPreset } from '@/lib/midi/pedals/microcosm/api';
 import { ConfirmModal } from './ConfirmModal';
+import { LibraryDrawer } from './LibraryDrawer';
 
 interface PresetManagerProps {
   isOpen: boolean;
@@ -49,29 +50,37 @@ export function PresetManager({
   const [confirmReplace, setConfirmReplace] = useState<{ bankNumber: number; preset: Preset } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Preset | null>(null);
 
+  // Library drawer state
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  const [libraryTargetSlot, setLibraryTargetSlot] = useState<number | null>(null);
+
   useEffect(() => {
     if (isOpen && banks.length === 0) {
-      console.log('PresetManager opened, loading banks for:', pedalType);
       loadBanks();
     }
   }, [isOpen, pedalType]);
 
+  // Close library drawer when preset manager closes
+  useEffect(() => {
+    if (!isOpen) {
+      setIsLibraryOpen(false);
+      setLibraryTargetSlot(null);
+    }
+  }, [isOpen]);
+
   const loadBanks = async () => {
     try {
       setLoading(true);
-      console.log('Calling getBankState with pedalType:', pedalType);
       const bankState = await getBankState(pedalType);
-      console.log('Loaded bank state from backend:', bankState, 'length:', bankState?.length);
       
       // Always ensure we have all 16 slots
       if (!bankState || bankState.length === 0) {
-        console.log('No bank state returned, creating 16 empty slots');
         const emptyBanks: BankSlot[] = [];
-        const colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6']; // red, yellow, green, blue
+        const colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6'];
         
         for (let i = 45; i <= 60; i++) {
           const bankGroup = Math.floor((i - 45) / 4);
-          const slotLetter = String.fromCharCode(65 + ((i - 45) % 4)); // A, B, C, D
+          const slotLetter = String.fromCharCode(65 + ((i - 45) % 4));
           emptyBanks.push({
             bankNumber: i,
             bankLabel: `Bank ${bankGroup + 1}${slotLetter}`,
@@ -79,18 +88,12 @@ export function PresetManager({
             preset: undefined,
           });
         }
-        console.log('Created empty bank slots:', emptyBanks);
         setBanks(emptyBanks);
-      } else if (bankState.length < 16) {
-        console.warn('Backend returned fewer than 16 slots:', bankState.length);
-        setBanks(bankState);
       } else {
-        console.log('Using bank state from backend:', bankState.length, 'slots');
         setBanks(bankState);
       }
     } catch (error) {
       console.error('Failed to load bank state:', error);
-      console.error('Error details:', JSON.stringify(error, null, 2));
       
       // On error, still create empty slots so UI isn't broken
       const emptyBanks: BankSlot[] = [];
@@ -111,12 +114,46 @@ export function PresetManager({
     }
   };
 
+  // --- Library drawer handlers ---
+  const handleOpenLibraryFromHeader = () => {
+    setLibraryTargetSlot(null);
+    setIsLibraryOpen(true);
+  };
+
+  const handleOpenLibraryForSlot = (bankNumber: number) => {
+    setLibraryTargetSlot(bankNumber);
+    setIsLibraryOpen(true);
+  };
+
+  const handleLibraryClose = () => {
+    setIsLibraryOpen(false);
+    setLibraryTargetSlot(null);
+  };
+
+  const handleLibrarySlotLoaded = () => {
+    // Refresh bank state after a preset was loaded into a slot
+    loadBanks();
+  };
+
+  const handleLibraryLoadToEditor = async (
+    state: MicrocosmState,
+    presetId: string,
+    presetName: string,
+  ) => {
+    if (onLoadPreset) {
+      await onLoadPreset(state, presetId, presetName);
+    } else {
+      await recallMicrocosmPreset(deviceName, state);
+    }
+    // Close the preset manager too
+    onClose();
+  };
+
+  // --- Existing handlers ---
   const handleStartSave = (bankNumber: number, existingPreset?: Preset) => {
     if (existingPreset) {
-      // Show replace confirmation
       setConfirmReplace({ bankNumber, preset: existingPreset });
     } else {
-      // Start new save
       setSavingToBank(bankNumber);
       setPresetName('');
       setPresetDescription('');
@@ -162,19 +199,16 @@ export function PresetManager({
 
       await savePresetToBank(deviceName, preset.id, savingToBank);
 
-      // Update active preset tracking
       if (onPresetSaved) {
         onPresetSaved(preset.id, preset.name);
       }
 
-      // Reset and reload
       setSavingToBank(null);
       setPresetName('');
       setPresetDescription('');
       setPresetTags('');
       await loadBanks();
       
-      // Close drawer after successful save
       setTimeout(() => {
         onClose();
       }, 300);
@@ -190,22 +224,17 @@ export function PresetManager({
       setLoadingPresetId(preset.id);
       const state = preset.parameters as MicrocosmState;
       
-      // Use the callback if provided (updates both pedal AND UI state, with preset tracking)
       if (onLoadPreset) {
         await onLoadPreset(state, preset.id, preset.name);
       } else {
-        // Fallback: just send to pedal (legacy behavior)
         await recallMicrocosmPreset(deviceName, state);
       }
       
-      console.log('✅ Loaded preset:', preset.name);
-      
-      // Close drawer after successful load
       setTimeout(() => {
         onClose();
       }, 300);
     } catch (error) {
-      console.error('❌ Failed to load preset:', error);
+      console.error('Failed to load preset:', error);
     } finally {
       setLoadingPresetId(null);
     }
@@ -218,7 +247,6 @@ export function PresetManager({
       const deletedPresetId = confirmDelete.id;
       await deletePreset(deletedPresetId);
       
-      // If we deleted the active preset, clear it from the editor
       if (activePresetId === deletedPresetId && onPresetCleared) {
         onPresetCleared();
       }
@@ -232,13 +260,23 @@ export function PresetManager({
 
   const content = (
     <>
-      {/* Overlay */}
+      {/* Overlay - covers full screen normally, or left 30% when library is open */}
       <div
-        className={`fixed inset-0 transition-opacity duration-300 ${
+        className={`fixed inset-0 transition-all duration-300 ease-in-out ${
           isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        } ${
+          // When library is open on desktop, only cover left side (not the drawers)
+          isLibraryOpen ? 'md:right-[70%]' : ''
         }`}
-        style={{ zIndex: 9998, backgroundColor: 'rgba(0, 0, 0, 0.2)' }}
-        onClick={onClose}
+        style={{ zIndex: 9997, backgroundColor: 'rgba(0, 0, 0, 0.2)' }}
+        onClick={() => {
+          if (isLibraryOpen) {
+            // Close library first
+            handleLibraryClose();
+          } else {
+            onClose();
+          }
+        }}
       />
 
       {/* Drawer */}
@@ -249,23 +287,36 @@ export function PresetManager({
         style={{ zIndex: 9999, backgroundColor: '#ffffff' }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-card-header border-b border-border-light">
+        <div className="relative flex items-center justify-between px-6 py-4 bg-card-header border-b border-border-light">
           <h2 className="text-lg font-semibold text-text-primary">Preset Manager</h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-control-hover rounded-md transition-colors"
-          >
-            <X className="w-5 h-5 text-text-secondary" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleOpenLibraryFromHeader}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent-blue/10 hover:bg-accent-blue/20 border border-accent-blue/30 rounded-md text-accent-blue transition-colors"
+            >
+              <Library className="w-3.5 h-3.5" />
+              View Library
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-control-hover rounded-md transition-colors"
+            >
+              <X className="w-5 h-5 text-text-secondary" />
+            </button>
+          </div>
         </div>
 
         {/* Content */}
-        <div className="p-4 overflow-y-auto h-[calc(100vh-73px)]" style={{ backgroundColor: '#f5f5f5' }}>
+        <div
+          className={`p-4 overflow-y-auto h-[calc(100vh-73px)] transition-opacity duration-200 ${
+            isLibraryOpen ? 'opacity-50 pointer-events-none' : ''
+          }`}
+          style={{ backgroundColor: '#f5f5f5' }}
+        >
           {loading ? (
             <div className="text-center py-12 text-text-secondary">Loading banks...</div>
           ) : (
             <div className="space-y-6">
-              {/* Debug info */}
               {banks.length === 0 && (
                 <div className="text-center py-4 text-accent-red text-sm">
                   No banks loaded. Total banks: {banks.length}
@@ -323,40 +374,51 @@ export function PresetManager({
                                     </div>
                                   )}
                                 </div>
-                                <button
-                                  onClick={() => handleLoadPreset(slot.preset!)}
-                                  disabled={loadingPresetId === slot.preset!.id}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-blue/10 hover:bg-accent-blue/20 border border-accent-blue/30 rounded-md text-accent-blue text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  {loadingPresetId === slot.preset!.id ? (
-                                    <>
-                                      <div className="w-3 h-3 border-2 border-accent-blue border-t-transparent rounded-full animate-spin" />
-                                      Loading
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Play className="w-3 h-3" />
-                                      Load
-                                    </>
-                                  )}
-                                </button>
-                                <button
-                                  onClick={() => setConfirmDelete(slot.preset!)}
-                                  className="p-1.5 hover:bg-accent-red/10 border border-control-border hover:border-accent-red/30 rounded-md text-text-muted hover:text-accent-red transition-colors"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                                <div className="flex items-center gap-2 w-[140px]">
+                                  <button
+                                    onClick={() => handleLoadPreset(slot.preset!)}
+                                    disabled={loadingPresetId === slot.preset!.id}
+                                    className="flex items-center justify-center gap-1.5 flex-1 py-1.5 bg-accent-blue/10 hover:bg-accent-blue/20 border border-accent-blue/30 rounded-md text-accent-blue text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {loadingPresetId === slot.preset!.id ? (
+                                      <>
+                                        <div className="w-3 h-3 border-2 border-accent-blue border-t-transparent rounded-full animate-spin" />
+                                        Loading
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Play className="w-3 h-3" />
+                                        Load
+                                      </>
+                                    )}
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmDelete(slot.preset!)}
+                                    className="p-1.5 hover:bg-accent-red/10 border border-control-border hover:border-accent-red/30 rounded-md text-text-muted hover:text-accent-red transition-colors flex-shrink-0"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
                               </>
                             ) : (
                               <>
                                 <div className="flex-1 text-text-muted text-sm">Empty</div>
-                                <button
-                                  onClick={() => handleStartSave(slot.bankNumber)}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-green/10 hover:bg-accent-green/20 border border-accent-green/30 rounded-md text-accent-green text-xs font-medium transition-colors"
-                                >
-                                  <Save className="w-3 h-3" />
-                                  Save Current
-                                </button>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => handleOpenLibraryForSlot(slot.bankNumber)}
+                                    className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-accent-blue/10 hover:bg-accent-blue/20 border border-accent-blue/30 rounded-md text-accent-blue text-xs font-medium transition-colors"
+                                  >
+                                    <Library className="w-3 h-3" />
+                                    Load from Library
+                                  </button>
+                                  <button
+                                    onClick={() => handleStartSave(slot.bankNumber)}
+                                    className="flex items-center justify-center p-1.5 bg-accent-green/10 hover:bg-accent-green/20 border border-accent-green/30 rounded-md text-accent-green transition-colors"
+                                    title="Save current settings"
+                                  >
+                                    <Save className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
                               </>
                             )}
                           </div>
@@ -371,6 +433,25 @@ export function PresetManager({
           )}
         </div>
       </div>
+
+      {/* Library Drawer */}
+      <LibraryDrawer
+        isOpen={isLibraryOpen}
+        onClose={handleLibraryClose}
+        deviceName={deviceName}
+        pedalType={pedalType}
+        targetBankSlot={libraryTargetSlot}
+        onSlotLoaded={handleLibrarySlotLoaded}
+        onLoadToEditor={handleLibraryLoadToEditor}
+        onPresetDeleted={(deletedId) => {
+          // Clear active preset if the deleted preset was active
+          if (activePresetId === deletedId && onPresetCleared) {
+            onPresetCleared();
+          }
+          // Refresh banks to update UI
+          loadBanks();
+        }}
+      />
 
       {/* Save Preset Dialog */}
       {savingToBank !== null && (

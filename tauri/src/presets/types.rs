@@ -115,6 +115,15 @@ impl BankSlot {
     }
 }
 
+/// Preset with bank assignments - used for library drawer display
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetWithBanks {
+    #[serde(flatten)]
+    pub preset: Preset,
+    pub bank_numbers: Vec<u8>,
+}
+
 /// Preset filter criteria
 #[derive(Debug, Clone, Default)]
 pub struct PresetFilter {

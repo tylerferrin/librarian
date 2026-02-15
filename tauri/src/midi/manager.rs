@@ -2,9 +2,10 @@
 // Handles device connections, message sending, and state management
 
 use crate::midi::error::{MidiError, MidiResult};
-use crate::midi::pedals::{Microcosm, GenLossMkii};
+use crate::midi::pedals::{Microcosm, GenLossMkii, ChromaConsole};
 use crate::midi::pedals::microcosm::{MicrocosmParameter, MicrocosmState};
 use crate::midi::pedals::gen_loss_mkii::{GenLossMkiiParameter, GenLossMkiiState};
+use crate::midi::pedals::chroma_console::{ChromaConsoleParameter, ChromaConsoleState};
 
 use midir::{MidiOutput, MidiOutputConnection};
 use std::collections::HashMap;
@@ -17,6 +18,7 @@ use std::time::Duration;
 pub enum PedalType {
     Microcosm,
     GenLossMkii,
+    ChromaConsole,
 }
 
 /// Information about a connected device
@@ -83,6 +85,10 @@ enum DeviceConnection {
     GenLossMkii {
         connection: MidiConnection,
         state: GenLossMkii,
+    },
+    ChromaConsole {
+        connection: MidiConnection,
+        state: ChromaConsole,
     },
 }
 
@@ -227,6 +233,65 @@ impl MidiManager {
             device_name.to_string(),
             DeviceConnection::GenLossMkii { connection, state },
         );
+        
+        // Reinitialize MIDI output for future connections
+        self.midi_output = Some(MidiOutput::new("Librarian Output")
+            .map_err(|e| MidiError::Other(e.to_string()))?);
+        
+        Ok(())
+    }
+    
+    /// Connect to a Chroma Console pedal
+    pub fn connect_chroma_console(
+        &mut self,
+        device_name: &str,
+        midi_channel: u8,
+    ) -> MidiResult<()> {
+        // Validate channel (1-16)
+        if midi_channel < 1 || midi_channel > 16 {
+            return Err(MidiError::InvalidChannel(midi_channel));
+        }
+        
+        // Check if already connected
+        if self.connections.contains_key(device_name) {
+            return Err(MidiError::AlreadyConnected(device_name.to_string()));
+        }
+        
+        // Find the MIDI port
+        let midi_out = self.midi_output.take()
+            .ok_or_else(|| MidiError::Other("MIDI output not initialized".to_string()))?;
+        
+        // Find the matching port by iterating and collecting the port we need
+        let port_opt = {
+            let ports = midi_out.ports();
+            ports.into_iter()
+                .find(|p| {
+                    midi_out.port_name(p)
+                        .map(|name| name.to_lowercase().contains(&device_name.to_lowercase()))
+                        .unwrap_or(false)
+                })
+        };
+        
+        let port = port_opt.ok_or_else(|| MidiError::DeviceNotFound(device_name.to_string()))?;
+        
+        // Connect to the port
+        let output = midi_out.connect(&port, "Librarian")
+            .map_err(|e| MidiError::ConnectionFailed(e.to_string()))?;
+        
+        // Create connection and device state
+        let connection = MidiConnection {
+            output,
+            midi_channel,
+        };
+        
+        let state = ChromaConsole::new(midi_channel);
+        
+        self.connections.insert(
+            device_name.to_string(),
+            DeviceConnection::ChromaConsole { connection, state },
+        );
+        
+        println!("✅ Connected to Chroma Console: '{}' on MIDI Channel {}", device_name, midi_channel);
         
         // Reinitialize MIDI output for future connections
         self.midi_output = Some(MidiOutput::new("Librarian Output")
@@ -395,6 +460,73 @@ impl MidiManager {
         }
     }
     
+    /// Send a parameter change to a Chroma Console
+    pub fn send_chroma_console_parameter(
+        &mut self,
+        device_name: &str,
+        param: ChromaConsoleParameter,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        
+        match device {
+            DeviceConnection::ChromaConsole { connection, state } => {
+                let cc_number = param.cc_number();
+                let cc_value = param.cc_value();
+                
+                connection.send_cc(cc_number, cc_value)?;
+                state.update_state(&param);
+                
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Chroma Console".to_string())),
+        }
+    }
+    
+    /// Recall a preset on a Chroma Console (send all parameters)
+    pub fn recall_chroma_console_preset(
+        &mut self,
+        device_name: &str,
+        state: &ChromaConsoleState,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        
+        match device {
+            DeviceConnection::ChromaConsole { connection, state: device_state } => {
+                // Get all CC values from the preset state
+                let temp_chroma = ChromaConsole {
+                    state: state.clone(),
+                    midi_channel: connection.midi_channel,
+                };
+                let cc_map = temp_chroma.state_as_cc_map();
+                
+                // Send all CC messages with throttling
+                for (cc_number, value) in cc_map.iter() {
+                    connection.send_cc(*cc_number, *value)?;
+                    thread::sleep(Duration::from_millis(10)); // Throttle to avoid MIDI buffer overflow
+                }
+                
+                // Update device state
+                *device_state = temp_chroma;
+                
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Chroma Console".to_string())),
+        }
+    }
+    
+    /// Get the current state of a Chroma Console
+    pub fn get_chroma_console_state(&self, device_name: &str) -> MidiResult<ChromaConsoleState> {
+        let device = self.connections.get(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        
+        match device {
+            DeviceConnection::ChromaConsole { state, .. } => Ok(state.state.clone()),
+            _ => Err(MidiError::Other("Device is not a Chroma Console".to_string())),
+        }
+    }
+    
     /// List all connected devices
     pub fn connected_devices(&self) -> Vec<ConnectedDevice> {
         self.connections.iter().map(|(name, device)| {
@@ -404,6 +536,9 @@ impl MidiManager {
                 }
                 DeviceConnection::GenLossMkii { connection, .. } => {
                     (PedalType::GenLossMkii, connection.midi_channel)
+                }
+                DeviceConnection::ChromaConsole { connection, .. } => {
+                    (PedalType::ChromaConsole, connection.midi_channel)
                 }
             };
             

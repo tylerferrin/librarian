@@ -320,6 +320,62 @@ impl PresetRepository {
         Ok(())
     }
     
+    /// Find all presets for a pedal type with their bank assignments
+    pub fn find_all_with_banks(&self, pedal_type: &str) -> Result<Vec<PresetWithBanks>> {
+        let conn = self.conn.lock().unwrap();
+        
+        // Get all presets for this pedal type
+        let mut stmt = conn.prepare(
+            "SELECT p.id, p.name, p.pedal_type, p.description, p.parameters, p.tags, p.is_favorite, p.created_at, p.updated_at,
+                    GROUP_CONCAT(pb.bank_number) as bank_numbers
+             FROM presets p
+             LEFT JOIN pedal_banks pb ON p.id = pb.preset_id AND pb.pedal_type = ?1
+             WHERE p.pedal_type = ?1
+             GROUP BY p.id
+             ORDER BY p.updated_at DESC"
+        )?;
+        
+        let rows = stmt.query_map(params![pedal_type], |row| {
+            let tags_json: String = row.get(5)?;
+            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            
+            let parameters_json: String = row.get(4)?;
+            let parameters: serde_json::Value = serde_json::from_str(&parameters_json)
+                .unwrap_or(serde_json::Value::Null);
+            
+            let bank_numbers_str: Option<String> = row.get(9)?;
+            let bank_numbers: Vec<u8> = bank_numbers_str
+                .map(|s| {
+                    s.split(',')
+                        .filter_map(|n| n.trim().parse::<u8>().ok())
+                        .collect()
+                })
+                .unwrap_or_default();
+            
+            Ok(PresetWithBanks {
+                preset: Preset {
+                    id: PresetId::new(row.get(0)?),
+                    name: row.get(1)?,
+                    pedal_type: row.get(2)?,
+                    description: row.get(3)?,
+                    parameters,
+                    tags,
+                    is_favorite: row.get::<_, i32>(6)? != 0,
+                    created_at: row.get(7)?,
+                    updated_at: row.get(8)?,
+                },
+                bank_numbers,
+            })
+        })?;
+        
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+        
+        Ok(results)
+    }
+    
     /// Clear a bank assignment
     pub fn clear_bank(&self, pedal_type: &str, bank_number: u8) -> Result<()> {
         let conn = self.conn.lock().unwrap();

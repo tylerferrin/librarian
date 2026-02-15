@@ -1,4 +1,4 @@
-import { EFFECT_CATEGORIES, type EffectType, type EffectVariation, type EffectCategory } from '../../../lib/midi/pedals/microcosm';
+import { EFFECT_CATEGORIES, CATEGORY_COLORS, type EffectType, type EffectVariation, type EffectCategory } from '../../../lib/midi/pedals/microcosm';
 
 interface EffectSelectorProps {
   currentEffect: EffectType;
@@ -8,8 +8,8 @@ interface EffectSelectorProps {
 
 const VARIATIONS: EffectVariation[] = ['A', 'B', 'C', 'D'];
 
-/** Color accents for each category */
-const CATEGORY_COLORS: Record<EffectCategory, { 
+/** Extended color info with Tailwind classes for EffectSelector UI */
+const CATEGORY_COLORS_WITH_CLASSES: Record<EffectCategory, { 
   borderColor: string; 
   bgColor: string; 
   textColor: string; 
@@ -20,40 +20,28 @@ const CATEGORY_COLORS: Record<EffectCategory, {
   activeBgClass: string;
 }> = {
   MicroLoop: {
-    borderColor: 'rgba(168, 85, 247, 0.4)',
-    bgColor: 'rgba(168, 85, 247, 0.1)',
-    textColor: '#a855f7',
-    activeBgColor: '#a855f7',
+    ...CATEGORY_COLORS.MicroLoop,
     borderClass: 'border-accent-purple/40',
     bgClass: 'bg-accent-purple/10',
     textClass: 'text-accent-purple',
     activeBgClass: 'bg-accent-purple',
   },
   MultiDelay: {
-    borderColor: 'rgba(6, 182, 212, 0.4)',
-    bgColor: 'rgba(6, 182, 212, 0.1)',
-    textColor: '#06b6d4',
-    activeBgColor: '#06b6d4',
+    ...CATEGORY_COLORS.MultiDelay,
     borderClass: 'border-accent-cyan/40',
     bgClass: 'bg-accent-cyan/10',
     textClass: 'text-accent-cyan',
     activeBgClass: 'bg-accent-cyan',
   },
   Granules: {
-    borderColor: 'rgba(245, 158, 11, 0.4)',
-    bgColor: 'rgba(245, 158, 11, 0.1)',
-    textColor: '#f59e0b',
-    activeBgColor: '#f59e0b',
+    ...CATEGORY_COLORS.Granules,
     borderClass: 'border-accent-amber/40',
     bgClass: 'bg-accent-amber/10',
     textClass: 'text-accent-amber',
     activeBgClass: 'bg-accent-amber',
   },
   MultiPass: {
-    borderColor: 'rgba(244, 63, 94, 0.4)',
-    bgColor: 'rgba(244, 63, 94, 0.1)',
-    textColor: '#f43f5e',
-    activeBgColor: '#f43f5e',
+    ...CATEGORY_COLORS.MultiPass,
     borderClass: 'border-accent-rose/40',
     bgClass: 'bg-accent-rose/10',
     textClass: 'text-accent-rose',
@@ -77,7 +65,7 @@ export function EffectSelector({ currentEffect, currentVariation, onSelectEffect
       {/* Categories Grid */}
       <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {EFFECT_CATEGORIES.map((category) => {
-          const colors = CATEGORY_COLORS[category.id];
+          const colors = CATEGORY_COLORS_WITH_CLASSES[category.id];
           const isCategoryActive = category.effects.some((e) => e.id === currentEffect);
 
           return (

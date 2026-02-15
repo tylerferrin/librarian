@@ -40,7 +40,7 @@ export function Toggle({ label, value, onChange, className = '', activeColor = '
       >
         <div
           className={`
-            absolute top-0.5 w-5 h-5 rounded-full transition-all duration-200 shadow-sm
+            absolute top-1/2 -translate-y-1/2 w-5 h-5 rounded-full transition-all duration-200 shadow-sm
             ${value
               ? 'translate-x-6 bg-white'
               : 'translate-x-0.5 bg-text-muted'

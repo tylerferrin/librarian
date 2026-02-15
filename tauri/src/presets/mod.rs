@@ -182,6 +182,11 @@ impl PresetLibrary {
         self.bank_tracker.clear_bank(pedal_type, bank)
     }
     
+    /// Get all presets with their bank assignments (for library drawer)
+    pub fn get_presets_with_banks(&self, pedal_type: &str) -> Result<Vec<PresetWithBanks>> {
+        self.repository.find_all_with_banks(pedal_type)
+    }
+    
     /// Get the preset assigned to a specific bank
     pub fn get_bank_preset(&self, pedal_type: &str, bank_number: u8) -> Result<Option<Preset>> {
         let bank = BankNumber::new(bank_number)?;

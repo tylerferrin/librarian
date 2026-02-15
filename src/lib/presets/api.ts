@@ -1,6 +1,6 @@
 // Preset management API - wrappers for Tauri commands
 import { invoke } from '@tauri-apps/api/core';
-import type { Preset, BankSlot, PresetFilter, SavePresetParams, UpdatePresetParams } from './types';
+import type { Preset, PresetWithBanks, BankSlot, PresetFilter, SavePresetParams, UpdatePresetParams } from './types';
 
 /**
  * Save a new preset to the library
@@ -82,6 +82,14 @@ export async function assignToBank(
     bankNumber,
     presetId,
   });
+}
+
+/**
+ * Get all presets for a pedal type with their bank assignments.
+ * Used by the library drawer to display presets with bank slot badges.
+ */
+export async function getPresetsWithBanks(pedalType: string): Promise<PresetWithBanks[]> {
+  return invoke<PresetWithBanks[]>('get_presets_with_banks', { pedalType });
 }
 
 /**

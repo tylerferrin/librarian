@@ -1,0 +1,25 @@
+---
+description: Always use shadcn components instead of bare HTML elements
+globs: **/*.tsx
+alwaysApply: false
+---
+
+# Use shadcn Components Over Bare HTML
+
+Always prefer shadcn/ui components over native HTML elements for consistent styling and UX.
+
+## Standard
+
+- ❌ **Avoid**: `<select>`, `<button>`, `<input>`, `<textarea>` with manual styling
+- ✅ **Use**: shadcn Select, Button, Input, Textarea components
+
+## Exceptions
+
+Native HTML is acceptable for:
+- Semantic structure (`<form>`, `<label>`, `<div>`, `<span>`, `<section>`, etc.)
+- Components not available in shadcn/ui
+- Custom components that wrap shadcn primitives
+
+## Implementation
+
+For implementation patterns and migration guide, see the `ui-components` skill.

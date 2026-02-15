@@ -20,6 +20,11 @@ pub fn run() {
         .manage(midi_manager)
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
+            // Maximize the main window on startup
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.maximize();
+            }
+            
             // Initialize preset library with proper app data directory
             let app_data_dir = app.path().app_data_dir()
                 .expect("Failed to get app data directory");
@@ -35,15 +40,20 @@ pub fn run() {
             commands::list_midi_devices,
             commands::connect_microcosm,
             commands::connect_gen_loss_mkii,
+            commands::connect_chroma_console,
             commands::disconnect_device,
             commands::list_connected_devices,
+            commands::request_midi_device_identity,
             commands::send_microcosm_parameter,
             commands::send_microcosm_program_change,
             commands::send_gen_loss_parameter,
+            commands::send_chroma_console_parameter,
             commands::get_microcosm_state,
             commands::get_gen_loss_state,
+            commands::get_chroma_console_state,
             commands::recall_microcosm_preset,
             commands::recall_gen_loss_preset,
+            commands::recall_chroma_console_preset,
             commands::is_device_connected,
             commands::save_preset,
             commands::update_preset,
@@ -53,6 +63,7 @@ pub fn run() {
             commands::toggle_favorite,
             commands::get_bank_state,
             commands::assign_to_bank,
+            commands::get_presets_with_banks,
             commands::save_preset_to_bank,
         ]);
 

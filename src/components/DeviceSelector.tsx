@@ -1,10 +1,179 @@
+import { useState, useEffect } from 'react';
+import { pedalRegistry } from '@/lib/midi/pedalRegistry';
+import type { PedalType } from '@/lib/midi/types';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DeviceIdentityDebug } from './DeviceIdentityDebug';
+import { getPedalTypeForDevice, saveDeviceProfile, hasDeviceProfile } from '@/lib/midi/deviceProfiles';
+
 interface DeviceSelectorProps {
   devices: string[];
   isRefreshing: boolean;
   isConnecting: boolean;
   error: string | null;
-  onConnect: (deviceName: string, channel: number) => void;
+  onConnect: (deviceName: string, channel: number, pedalType: PedalType) => void;
   onRefresh: () => void;
+}
+
+// Detect pedal type from device name
+function detectPedalType(deviceName: string): PedalType | null {
+  const allPedals = pedalRegistry.getAll();
+  const lowerName = deviceName.toLowerCase();
+  
+  // Try to match device name to pedal
+  const detected = allPedals.find(pedal => {
+    const pedalNameLower = pedal.name.toLowerCase();
+    // Check if device name contains the pedal name or manufacturer
+    return lowerName.includes(pedalNameLower) || 
+           lowerName.includes(pedal.manufacturer.toLowerCase());
+  });
+  
+  return detected ? (detected.type as PedalType) : null;
+}
+
+interface DeviceItemProps {
+  deviceName: string;
+  isConnecting: boolean;
+  onConnect: (deviceName: string, channel: number, pedalType: PedalType) => void;
+}
+
+function DeviceItem({ deviceName, isConnecting, onConnect }: DeviceItemProps) {
+  const availablePedals = pedalRegistry.getAll();
+  const detectedType = detectPedalType(deviceName);
+  const savedProfile = getPedalTypeForDevice(deviceName);
+  
+  // Priority: 1) Saved profile, 2) Name detection, 3) Default
+  const [selectedPedalType, setSelectedPedalType] = useState<string>(
+    savedProfile || detectedType || availablePedals[0]?.type || 'Microcosm'
+  );
+  const [showDropdown, setShowDropdown] = useState(!detectedType && !savedProfile);
+  const [showIdentityDebug, setShowIdentityDebug] = useState(false);
+  const [rememberDevice, setRememberDevice] = useState(hasDeviceProfile(deviceName));
+  
+  const selectedPedal = pedalRegistry.get(selectedPedalType);
+
+  // Update remember device state when pedal type changes
+  useEffect(() => {
+    if (rememberDevice && selectedPedalType) {
+      saveDeviceProfile(deviceName, selectedPedalType as PedalType);
+    }
+  }, [rememberDevice, selectedPedalType, deviceName]);
+
+  const handleConnect = () => {
+    onConnect(deviceName, 1, selectedPedalType as PedalType);
+  };
+
+  return (
+    <div className="p-4 bg-card-header rounded-md transition-colors border border-border-light">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 flex-1">
+          <div className="text-2xl">{selectedPedal?.icon || '🎹'}</div>
+          <div className="flex-1">
+            <p className="font-medium text-text-primary">{deviceName}</p>
+            <p className="text-sm text-text-secondary">MIDI Channel 1</p>
+          </div>
+        </div>
+
+        {/* Pedal Type Selection */}
+        <div className="flex items-center gap-3">
+          {showDropdown || !detectedType ? (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-text-secondary">Pedal Type:</label>
+              <Select
+                value={selectedPedalType}
+                onValueChange={setSelectedPedalType}
+                disabled={isConnecting}
+              >
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent style={{ backgroundColor: '#ffffff' }}>
+                  {availablePedals.map((pedal) => (
+                    <SelectItem key={pedal.type} value={pedal.type}>
+                      {pedal.icon} {pedal.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowDropdown(true)}
+              className="px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary border border-control-border rounded-md hover:bg-control-hover transition-colors"
+              disabled={isConnecting}
+            >
+              Change Type
+            </button>
+          )}
+
+          <button
+            onClick={handleConnect}
+            disabled={isConnecting}
+            className="px-6 py-2 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+            style={{ backgroundColor: '#3b82f6', color: '#ffffff' }}
+          >
+            {isConnecting ? 'Connecting...' : 'Connect'}
+          </button>
+        </div>
+      </div>
+      
+      {/* Auto-detection indicator */}
+      {detectedType && !showDropdown && !savedProfile && (
+        <div className="mt-2 text-xs text-success flex items-center gap-1">
+          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+          </svg>
+          Auto-detected: {selectedPedal?.name}
+        </div>
+      )}
+
+      {/* Saved profile indicator */}
+      {savedProfile && (
+        <div className="mt-2 text-xs text-accent-blue flex items-center gap-1">
+          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+          </svg>
+          Remembered: {selectedPedal?.name}
+        </div>
+      )}
+
+      {/* Remember device checkbox */}
+      {!detectedType && (showDropdown || savedProfile) && (
+        <div className="mt-2">
+          <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer hover:text-text-primary">
+            <input
+              type="checkbox"
+              checked={rememberDevice}
+              onChange={(e) => setRememberDevice(e.target.checked)}
+              className="rounded border-control-border text-accent-blue focus:ring-accent-blue"
+            />
+            Remember this device
+          </label>
+          {rememberDevice && (
+            <p className="text-xs text-text-muted mt-1 ml-5">
+              App will auto-select {selectedPedal?.name} for "{deviceName}"
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Device Identity Debug (DEV only) */}
+      {import.meta.env.DEV && (
+        <div className="mt-3">
+          <button
+            onClick={() => setShowIdentityDebug(!showIdentityDebug)}
+            className="text-xs text-text-secondary hover:text-text-primary transition-colors"
+          >
+            {showIdentityDebug ? '▼' : '▶'} Developer: Show Device Identity
+          </button>
+          {showIdentityDebug && (
+            <div className="mt-2">
+              <DeviceIdentityDebug deviceName={deviceName} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function DeviceSelector({
@@ -77,30 +246,14 @@ export function DeviceSelector({
               </button>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {devices.map((deviceName) => (
-                <div
+                <DeviceItem
                   key={deviceName}
-                  className="flex items-center justify-between p-4 bg-card-header hover:bg-control-hover rounded-md transition-colors border border-border-light"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="text-2xl">🎹</div>
-                    <div>
-                      <p className="font-medium text-text-primary">{deviceName}</p>
-                      <p className="text-sm text-text-secondary">
-                        MIDI Channel 1
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => onConnect(deviceName, 1)}
-                    disabled={isConnecting}
-                    className="px-6 py-2 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ backgroundColor: '#3b82f6', color: '#ffffff' }}
-                  >
-                    {isConnecting ? 'Connecting...' : 'Connect'}
-                  </button>
-                </div>
+                  deviceName={deviceName}
+                  isConnecting={isConnecting}
+                  onConnect={onConnect}
+                />
               ))}
             </div>
           )}

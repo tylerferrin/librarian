@@ -19,7 +19,7 @@ export function ConnectionHeader({ deviceInfo, onDisconnect }: ConnectionHeaderP
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-card-bg/95 backdrop-blur-sm border-b border-border-light shadow-sm">
-      <div className="container mx-auto px-6 h-16 flex items-center justify-between">
+      <div className="container mx-auto px-6 h-16 grid grid-cols-3 items-center">
         {/* Left: Device Info */}
         <div className="flex items-center gap-4">
           <div className="text-2xl">🎹</div>
@@ -32,18 +32,20 @@ export function ConnectionHeader({ deviceInfo, onDisconnect }: ConnectionHeaderP
         </div>
 
         {/* Center: Connection Status */}
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex items-center justify-center gap-2 text-sm">
           <div className="w-2 h-2 rounded-full bg-success animate-pulse"></div>
           <span className="text-text-secondary">Connected</span>
         </div>
 
         {/* Right: Disconnect Button */}
-        <button
-          onClick={onDisconnect}
-          className="px-4 py-2 text-sm bg-card-bg hover:bg-error/10 hover:text-error border border-control-border hover:border-error/30 rounded-md transition-colors"
-        >
-          Disconnect
-        </button>
+        <div className="flex justify-end">
+          <button
+            onClick={onDisconnect}
+            className="px-4 py-2 text-sm bg-card-bg hover:bg-error/10 hover:text-error border border-control-border hover:border-error/30 rounded-md transition-colors"
+          >
+            Disconnect
+          </button>
+        </div>
       </div>
     </header>
   );
