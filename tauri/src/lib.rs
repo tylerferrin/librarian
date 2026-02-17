@@ -7,6 +7,10 @@ pub mod presets;
 // Tauri commands for frontend integration
 pub mod commands;
 
+// Test utilities module
+#[cfg(test)]
+pub mod test_utils;
+
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -23,6 +27,13 @@ pub fn run() {
             // Maximize the main window on startup
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.maximize();
+            }
+            
+            // Set app handle on MIDI manager for event emission
+            let midi_manager = app.state::<midi::SharedMidiManager>();
+            if let Ok(mut manager) = midi_manager.lock() {
+                manager.set_app_handle(app.handle().clone());
+                println!("✅ MIDI Manager configured for bidirectional communication");
             }
             
             // Initialize preset library with proper app data directory
@@ -48,6 +59,7 @@ pub fn run() {
             commands::send_microcosm_program_change,
             commands::send_gen_loss_parameter,
             commands::send_chroma_console_parameter,
+            commands::send_chroma_console_program_change,
             commands::get_microcosm_state,
             commands::get_gen_loss_state,
             commands::get_chroma_console_state,
@@ -63,8 +75,10 @@ pub fn run() {
             commands::toggle_favorite,
             commands::get_bank_state,
             commands::assign_to_bank,
+            commands::clear_bank,
             commands::get_presets_with_banks,
             commands::save_preset_to_bank,
+            commands::get_bank_config,
         ]);
 
     // Run the app with context

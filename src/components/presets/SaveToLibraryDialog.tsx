@@ -108,6 +108,16 @@ export function SaveToLibraryDialog({
               </p>
             </div>
 
+            {pedalType === 'ChromaConsole' && (
+              <div className="p-3 bg-accent-amber/5 border border-accent-amber/20 rounded-md">
+                <p className="text-xs text-text-secondary">
+                  <strong>Note:</strong> Signal path order is for visual reference only. 
+                  To configure signal routing on the pedal, use the FX Setup menu on the Chroma Console.
+                  The signal path order will not be synced to the pedal when loading this preset.
+                </p>
+              </div>
+            )}
+
             {/* Name */}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-text-secondary mb-2">

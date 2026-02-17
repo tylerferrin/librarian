@@ -4,6 +4,8 @@
 // Chroma Console Enums
 // ============================================================================
 
+export type ModuleSlot = 'character' | 'movement' | 'diffusion' | 'texture';
+
 export type CharacterModule = 
   | 'Drive' 
   | 'Sweeten' 
@@ -92,6 +94,9 @@ export interface ChromaConsoleState {
   capture_routing: CaptureRouting;     // CC# 83
   filter_mode: FilterMode;             // CC# 84
   calibration_level: CalibrationLevel; // CC# 94
+  
+  // Signal path order (app-only metadata, not sent to pedal)
+  signal_path: ModuleSlot[];
 }
 
 // ============================================================================

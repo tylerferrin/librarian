@@ -1,14 +1,16 @@
 // Preset Card - displays a single preset in the library with optional bank badges
 import { Play, Star, Trash2 } from 'lucide-react';
-import type { Preset } from '@/lib/presets/types';
+import type { Preset, BankConfig } from '@/lib/presets/types';
 import { formatBankSlot } from '@/lib/presets/utils';
 import type { MicrocosmState } from '@/lib/midi/pedals/microcosm/types';
 import { getEffectColors } from '@/lib/midi/pedals/microcosm/colors';
 
 interface PresetCardProps {
   preset: Preset;
-  /** Bank numbers this preset is currently assigned to (45-60) */
+  /** Bank numbers this preset is currently assigned to */
   bankSlots?: number[];
+  /** Bank configuration for formatting slot labels */
+  bankConfig?: BankConfig;
   /** 'library' renders full actions; 'select' makes the whole card clickable */
   mode?: 'library' | 'select';
   /** Whether this card is currently being loaded (shows spinner) */
@@ -26,6 +28,7 @@ interface PresetCardProps {
 export function PresetCard({
   preset,
   bankSlots = [],
+  bankConfig,
   mode = 'library',
   isLoading = false,
   disabled = false,
@@ -139,7 +142,8 @@ export function PresetCard({
             </span>
             <div className="flex items-center gap-1">
               {bankSlots.map((bankNum) => {
-                const info = formatBankSlot(bankNum);
+                if (!bankConfig) return null;
+                const info = formatBankSlot(bankNum, bankConfig);
                 return (
                   <span
                     key={bankNum}

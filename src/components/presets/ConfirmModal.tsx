@@ -10,7 +10,7 @@ interface ConfirmModalProps {
   cancelLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
-  variant?: 'danger' | 'warning';
+  variant?: 'danger' | 'warning' | 'info';
 }
 
 export function ConfirmModal({
@@ -39,7 +39,13 @@ export function ConfirmModal({
         {/* Header */}
         <div className="flex items-center gap-3 px-6 py-4 bg-card-header border-b border-border-light">
           <AlertTriangle
-            className={`w-5 h-5 ${variant === 'danger' ? 'text-accent-red' : 'text-warning'}`}
+            className={`w-5 h-5 ${
+              variant === 'danger' 
+                ? 'text-accent-red' 
+                : variant === 'info'
+                ? 'text-accent-blue'
+                : 'text-warning'
+            }`}
           />
           <h2 className="text-base font-semibold text-text-primary flex-1">{title}</h2>
           <button

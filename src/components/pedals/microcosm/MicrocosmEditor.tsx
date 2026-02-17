@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Save, GripVertical, Library } from 'lucide-react';
+import { useState } from 'react';
+import { Save, GripVertical, Library, RotateCcw } from 'lucide-react';
 import { 
   DndContext, 
   closestCenter, 
@@ -18,7 +18,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useMicrocosmEditor } from '../../../hooks/pedals/microcosm/useMicrocosmEditor';
-import { Knob, Toggle, TapButton, GridSelector } from '../../common';
+import { Knob, Toggle, TapButton, GridSelector, PedalUtilityCard, UtilityDivider, PresetManagementCard } from '../../common';
 import { ParameterCard } from '../../common/ParameterCard';
 import { EffectSelector } from './EffectSelector';
 import { PresetManager, SaveToLibraryDialog } from '../../presets';
@@ -97,7 +97,7 @@ function SortableParameterCard({ id, title, children }: SortableParameterCardPro
 
 export function MicrocosmEditor({ deviceName }: MicrocosmEditorProps) {
   const editor = useMicrocosmEditor(deviceName);
-  const { state, loadPreset, activePreset, isDirty, resetToPreset } = editor;
+  const { state, loadPreset, activePreset, isDirty, resetToPreset, resetToPedalDefault, calculatedBPM, toggleTempoMode } = editor;
   
   // Preset Manager state
   const [managerOpen, setManagerOpen] = useState(false);
@@ -170,13 +170,17 @@ export function MicrocosmEditor({ deviceName }: MicrocosmEditorProps) {
         parameters: state,
       });
       
-      // Find which bank this preset is assigned to and re-save to pedal
+      // Find ALL banks this preset is assigned to and re-save to each
       const bankState = await getBankState('Microcosm');
-      const assignedBank = bankState.find(slot => slot.preset?.id === activePreset.id);
+      const assignedBanks = bankState.filter(slot => slot.preset?.id === activePreset.id);
       
-      if (assignedBank) {
-        // Re-save to the same bank with updated parameters
-        await savePresetToBank(deviceName, activePreset.id, assignedBank.bankNumber);
+      if (assignedBanks.length > 0) {
+        console.log(`📝 Re-saving preset to ${assignedBanks.length} pedal bank(s)...`);
+        // Re-save to all assigned banks with updated parameters
+        for (const bank of assignedBanks) {
+          await savePresetToBank(deviceName, activePreset.id, bank.bankNumber);
+        }
+        console.log('✅ Updated preset on pedal');
       }
       
       // Mark as clean (same preset, just updated)
@@ -206,18 +210,67 @@ export function MicrocosmEditor({ deviceName }: MicrocosmEditorProps) {
       case 'time':
         return (
           <SortableParameterCard key="time" id="time" title="Time / Tempo">
-            <GridSelector
-              label="Subdiv"
-              value={state.subdivision}
-              options={subdivisionOptions}
-              onChange={(v) => editor.setSubdivision(v as SubdivisionValue)}
-              columns={3}
-            />
+            {/* Mode toggle button - spans full width */}
+            <div className="col-span-full flex items-center gap-2 pb-2">
+              <button
+                onClick={toggleTempoMode}
+                className="flex-1 px-2 py-1 text-xs font-medium rounded border transition-colors"
+                style={{
+                  backgroundColor: state.tempo_mode ? 'transparent' : 'rgba(59, 130, 246, 0.1)',
+                  borderColor: state.tempo_mode ? 'rgba(0, 0, 0, 0.1)' : 'rgba(59, 130, 246, 0.3)',
+                  color: state.tempo_mode ? '#9ca3af' : '#3b82f6',
+                }}
+              >
+                Subdiv
+              </button>
+              <button
+                onClick={toggleTempoMode}
+                className="flex-1 px-2 py-1 text-xs font-medium rounded border transition-colors"
+                style={{
+                  backgroundColor: state.tempo_mode ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                  borderColor: state.tempo_mode ? 'rgba(59, 130, 246, 0.3)' : 'rgba(0, 0, 0, 0.1)',
+                  color: state.tempo_mode ? '#3b82f6' : '#9ca3af',
+                }}
+              >
+                Tempo
+              </button>
+            </div>
+            
+            {/* First control - left side */}
+            {state.tempo_mode ? (
+              // Tempo Mode - show BPM display
+              <div className="flex flex-col items-center justify-center gap-2 min-h-[120px]">
+                <div className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                  BPM
+                </div>
+                <div className="text-3xl font-bold text-accent-blue">
+                  {calculatedBPM || '--'}
+                </div>
+                <TapButton
+                  label="TAP"
+                  onTap={editor.tapTempo}
+                  variant="accent"
+                />
+              </div>
+            ) : (
+              // Subdivision Mode - show grid selector
+              <GridSelector
+                label="Subdiv"
+                value={state.subdivision}
+                options={subdivisionOptions}
+                onChange={(v) => editor.setSubdivision(v as SubdivisionValue)}
+                columns={3}
+              />
+            )}
+            
+            {/* Second control - center */}
             <Knob
               label="Time"
               value={state.time}
               onChange={editor.setTime}
             />
+            
+            {/* Third control - right side */}
             <Toggle
               label="Hold Sampler"
               value={state.hold_sampler}
@@ -394,99 +447,106 @@ export function MicrocosmEditor({ deviceName }: MicrocosmEditorProps) {
 
   return (
     <>
+      {/* Fixed Preset Manager Button - Top Right */}
+      <button
+        onClick={() => setManagerOpen(true)}
+        className="fixed top-4 right-4 z-50 p-2 bg-card-bg hover:bg-control-hover rounded-md border border-control-border transition-colors shadow-lg"
+        title="Open Preset Manager"
+        aria-label="Open Preset Manager"
+      >
+        <Library className="w-5 h-5 text-text-primary" />
+      </button>
+
       <div className="space-y-4 select-none">
-        {/* Active Preset Indicator */}
-        {activePreset && (
-          <div 
-            className={`rounded-lg p-3 shadow-sm border transition-all duration-700 ${isDirty ? 'animate-gradient-wave' : ''}`}
-            style={{ 
-              backgroundImage: isDirty 
-                ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(251, 146, 60, 0.08) 50%, rgba(239, 68, 68, 0.12) 100%)'
-                : 'linear-gradient(135deg, rgba(163, 230, 53, 0.12) 0%, rgba(132, 204, 22, 0.08) 100%)',
-              borderColor: isDirty 
-                ? 'rgba(239, 68, 68, 0.3)'
-                : 'rgba(163, 230, 53, 0.3)',
-              backgroundSize: isDirty ? '200% 100%' : '100% 100%',
-            }}
+        {/* Control Cards Row */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Pedal Utilities */}
+          <PedalUtilityCard>
+            <Toggle
+              label="Bypass"
+              value={state.bypass}
+              onChange={editor.setBypass}
+              activeColor="green"
+            />
+            <UtilityDivider />
+            <TapButton
+              label="TAP Tempo"
+              onTap={editor.tapTempo}
+              variant="accent"
+            />
+            <UtilityDivider />
+            <Toggle
+              label="Reverse Effect"
+              value={state.reverse_effect}
+              onChange={editor.setReverseEffect}
+              activeColor="red"
+            />
+          </PedalUtilityCard>
+
+          {/* Preset Management */}
+          <PresetManagementCard
+            activePreset={activePreset ? { name: activePreset.name, isDirty } : null}
           >
-            <div className="flex items-center gap-3 min-h-[32px]">
-              <div className="flex-1 flex items-center gap-2 min-h-[24px]">
-                <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
-                  Active Preset:
-                </span>
-                <span className="text-sm font-medium text-text-primary">
-                  {activePreset.name}
-                </span>
-                {isDirty && (
-                  <span className="text-xs font-medium px-2 py-0.5 rounded transition-all duration-500 bg-accent-red/10 border border-accent-red/30 text-accent-red">
-                    Modified
-                  </span>
-                )}
-              </div>
-              {isDirty && (
-                <>
+            <div className="grid grid-cols-2 gap-2 w-full">
+              {activePreset ? (
+                // Preset is active (modified or unmodified)
+                isDirty ? (
+                  // Modified preset - show Update, Save to Library, Reset to Preset, and Pedal Default buttons
+                  <>
+                    <button
+                      onClick={handleUpdatePreset}
+                      disabled={updating}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-md transition-all disabled:opacity-50"
+                      style={{ backgroundColor: '#10b981', color: '#ffffff' }}
+                    >
+                      <Save className="w-3 h-3" />
+                      {updating ? 'Updating...' : 'Update'}
+                    </button>
+                    <button
+                      onClick={() => setLibraryDialogOpen(true)}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-md bg-accent-blue/10 hover:bg-accent-blue/20 border border-accent-blue/30 text-accent-blue transition-all"
+                    >
+                      <Library className="w-3 h-3" />
+                      Save to Library
+                    </button>
+                    <button
+                      onClick={resetToPreset}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium border border-control-border rounded-md bg-card-bg text-text-primary hover:bg-control-hover transition-all"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      Reset to Preset
+                    </button>
+                    <button
+                      onClick={resetToPedalDefault}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium border border-control-border rounded-md bg-card-bg text-text-primary hover:bg-control-hover transition-all"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      Pedal Default
+                    </button>
+                  </>
+                ) : (
+                  // Unmodified preset - only show Pedal Default
                   <button
-                    onClick={handleUpdatePreset}
-                    disabled={updating}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all disabled:opacity-50"
-                    style={{ backgroundColor: '#10b981', color: '#ffffff' }}
+                    onClick={resetToPedalDefault}
+                    className="col-span-2 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium border border-control-border rounded-md bg-card-bg text-text-primary hover:bg-control-hover transition-all"
                   >
-                    <Save className="w-3 h-3" />
-                    {updating ? 'Updating...' : 'Update'}
+                    <RotateCcw className="w-3 h-3" />
+                    Pedal Default
                   </button>
-                  <button
-                    onClick={() => setLibraryDialogOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-accent-blue/10 hover:bg-accent-blue/20 border border-accent-blue/30 text-accent-blue transition-all"
-                  >
-                    <Library className="w-3 h-3" />
-                    Save to Library
-                  </button>
-                  <button
-                    onClick={resetToPreset}
-                    className="px-3 py-1.5 text-xs font-medium border border-control-border rounded-md bg-card-bg text-text-primary hover:bg-control-hover transition-all duration-500"
-                  >
-                    Reset
-                  </button>
-                </>
+                )
+              ) : (
+                // No preset active - show Save Preset button
+                <button
+                  onClick={() => setLibraryDialogOpen(true)}
+                  className="col-span-2 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-md bg-accent-blue/10 hover:bg-accent-blue/20 border border-accent-blue/30 text-accent-blue transition-all"
+                >
+                  <Library className="w-3 h-3" />
+                  Save Preset
+                </button>
               )}
             </div>
-          </div>
-        )}
-
-        {/* Preset & Global Controls */}
-      <div className="flex items-center gap-4 flex-wrap bg-card-bg border border-border-light rounded-lg p-3 shadow-sm">
-        <div className="flex items-center gap-3">
-          <Toggle
-            label="Bypass"
-            value={state.bypass}
-            onChange={editor.setBypass}
-            activeColor="green"
-          />
+          </PresetManagementCard>
         </div>
-        <div className="h-8 w-px bg-border-light" />
-        <TapButton
-          label="TAP Tempo"
-          onTap={editor.tapTempo}
-          variant="accent"
-        />
-        <Toggle
-          label="Reverse Effect"
-          value={state.reverse_effect}
-          onChange={editor.setReverseEffect}
-          activeColor="red"
-        />
-        <div className="flex-1" />
-        <TapButton
-          label="Save Preset"
-          onTap={() => setLibraryDialogOpen(true)}
-          variant="accent"
-        />
-        <TapButton
-          label="Preset Manager"
-          onTap={() => setManagerOpen(true)}
-          variant="accent"
-        />
-      </div>
 
       {/* Effect Type Selection */}
       <EffectSelector

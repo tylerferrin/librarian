@@ -4,8 +4,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Library, ArrowLeft } from 'lucide-react';
 import { getPresetsWithBanks, savePresetToBank, deletePreset } from '@/lib/presets';
-import type { PresetWithBanks } from '@/lib/presets/types';
+import type { PresetWithBanks, BankConfig } from '@/lib/presets/types';
 import type { MicrocosmState } from '@/lib/midi/pedals/microcosm/types';
+import { pedalRegistry } from '@/lib/midi/pedalRegistry';
 import { formatBankSlot } from '@/lib/presets/utils';
 import { PresetCard } from './PresetCard';
 import { ConfirmModal } from './ConfirmModal';
@@ -39,6 +40,7 @@ export function LibraryDrawer({
   const [loading, setLoading] = useState(true);
   const [loadingPresetId, setLoadingPresetId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [bankConfig, setBankConfig] = useState<BankConfig | null>(null);
 
   // Conflict confirmation state
   const [confirmSlot, setConfirmSlot] = useState<{
@@ -64,6 +66,14 @@ export function LibraryDrawer({
     }
   }, [pedalType]);
 
+  // Load bank config from pedal definition
+  useEffect(() => {
+    const pedal = pedalRegistry.get(pedalType);
+    if (pedal?.bankConfig) {
+      setBankConfig(pedal.bankConfig);
+    }
+  }, [pedalType]);
+
   useEffect(() => {
     if (isOpen) {
       loadPresets();
@@ -80,6 +90,16 @@ export function LibraryDrawer({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
+
+  // Disable body scroll when drawer is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = '';
+      };
+    }
+  }, [isOpen]);
 
   const handlePresetSelect = async (preset: PresetWithBanks) => {
     if (loadingPresetId) return; // Prevent double-clicks
@@ -111,8 +131,17 @@ export function LibraryDrawer({
   const saveToBankSlot = async (preset: PresetWithBanks, bankSlot: number) => {
     try {
       setLoadingPresetId(preset.id);
-      await savePresetToBank(deviceName, preset.id, bankSlot);
-      console.log(`Saved "${preset.name}" to bank slot ${formatBankSlot(bankSlot).label}`);
+      const result = await savePresetToBank(deviceName, preset.id, bankSlot);
+      
+      if (bankConfig) {
+        const slotLabel = formatBankSlot(bankSlot, bankConfig).label;
+        if (result.manualSaveRequired && result.instructions) {
+          console.log(`Loaded "${preset.name}" to bank slot ${slotLabel}. Manual save required: ${result.instructions}`);
+        } else {
+          console.log(`Saved "${preset.name}" to bank slot ${slotLabel}`);
+        }
+      }
+      
       onSlotLoaded?.();
       onClose();
     } catch (err) {
@@ -171,7 +200,7 @@ export function LibraryDrawer({
     }
   };
 
-  const targetSlotInfo = targetBankSlot != null ? formatBankSlot(targetBankSlot) : null;
+  const targetSlotInfo = targetBankSlot != null && bankConfig ? formatBankSlot(targetBankSlot, bankConfig) : null;
 
   const content = (
     <>
@@ -260,6 +289,7 @@ export function LibraryDrawer({
                   key={presetWithBanks.id}
                   preset={presetWithBanks}
                   bankSlots={presetWithBanks.bankNumbers}
+                  bankConfig={bankConfig || undefined}
                   mode="select"
                   isLoading={loadingPresetId === presetWithBanks.id}
                   disabled={loadingPresetId !== null && loadingPresetId !== presetWithBanks.id}
@@ -289,8 +319,8 @@ export function LibraryDrawer({
         isOpen={confirmDelete !== null}
         title="Delete Preset?"
         message={
-          confirmDelete && confirmDelete.bankNumbers.length > 0
-            ? `"${confirmDelete.name}" is currently loaded in pedal bank ${confirmDelete.bankNumbers.map(num => formatBankSlot(num).label).join(', ')}. Deleting this preset will remove it from both the app library and the pedal bank. This action cannot be undone.`
+          confirmDelete && confirmDelete.bankNumbers.length > 0 && bankConfig
+            ? `"${confirmDelete.name}" is currently loaded in pedal bank ${confirmDelete.bankNumbers.map(num => formatBankSlot(num, bankConfig).label).join(', ')}. Deleting this preset will remove it from both the app library and the pedal bank. This action cannot be undone.`
             : `Are you sure you want to delete "${confirmDelete?.name}"? This preset will be permanently removed from your library and cannot be recovered.`
         }
         confirmLabel="Delete"

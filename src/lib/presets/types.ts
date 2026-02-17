@@ -1,6 +1,28 @@
 // TypeScript types for preset management
 import { MicrocosmState } from '../midi/pedals/microcosm/types';
 
+export type MidiSaveCapability = 
+  | { type: 'supported'; ccNumber: number; description: string }
+  | { type: 'manualOnly'; instructions: string }
+  | { type: 'autoSave' };
+
+export interface BankConfig {
+  programChangeStart: number;
+  programChangeEnd: number;
+  numBanks: number;
+  slotsPerBank: number;
+  bankLabels: string[];
+  bankColors: string[];
+  midiSave: MidiSaveCapability;
+}
+
+export interface SaveToBankResult {
+  success: boolean;
+  savedViaMidi: boolean;
+  manualSaveRequired: boolean;
+  instructions?: string;
+}
+
 export interface Preset {
   id: string;
   name: string;

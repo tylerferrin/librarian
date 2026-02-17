@@ -70,10 +70,10 @@ impl Default for ChromaConsoleState {
             diffusion_module: DiffusionModule::Off,
             texture_module: TextureModule::Off,
             bypass_state: BypassState::Bypass,
-            character_bypass: false,
-            movement_bypass: false,
-            diffusion_bypass: false,
-            texture_bypass: false,
+            character_bypass: true,  // Module is Off, so bypass should be true
+            movement_bypass: true,   // Module is Off, so bypass should be true
+            diffusion_bypass: true,  // Module is Off, so bypass should be true
+            texture_bypass: true,    // Module is Off, so bypass should be true
             gesture_mode: GestureMode::Play,
             capture_mode: CaptureMode::Stop,
             capture_routing: CaptureRouting::PostFx,

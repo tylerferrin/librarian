@@ -47,3 +47,19 @@
 .animate-gradient-wave {
   animation: gradient-wave 4s ease-in-out infinite;
 }
+
+/* Breathing animation for active effect indicators */
+@keyframes breathe {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(0.98);
+  }
+}
+
+.animate-breathe {
+  animation: breathe 2.5s ease-in-out infinite;
+}

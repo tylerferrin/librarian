@@ -1,9 +1,10 @@
 // React hook for managing Chroma Console editor state
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   getChromaConsoleState,
   sendChromaConsoleParameter,
+  recallChromaConsolePreset,
   type ChromaConsoleState,
   type CharacterModule,
   type MovementModule,
@@ -15,10 +16,12 @@ import {
   type CaptureRouting,
   type FilterMode,
   type CalibrationLevel,
+  type ModuleSlot,
   createDefaultState,
   cloneState,
   statesEqual,
 } from '@/lib/midi/pedals/chroma_console';
+import { useMIDIInput, type MidiCCEvent } from '@/hooks/useMIDIInput';
 
 interface UseChromaConsoleEditorReturn {
   state: ChromaConsoleState | null;
@@ -67,11 +70,15 @@ interface UseChromaConsoleEditorReturn {
   setFilterMode: (mode: FilterMode) => Promise<void>;
   setCalibrationLevel: (level: CalibrationLevel) => Promise<void>;
   
+  // Signal path (app-only metadata)
+  setSignalPath: (newPath: ModuleSlot[]) => void;
+  
   // Preset management
   loadPreset: (state: ChromaConsoleState, presetId?: string, presetName?: string) => Promise<void>;
   activePreset: { id: string; name: string } | null;
   isDirty: boolean;
   resetToPreset: () => void;
+  resetToPedalDefault: () => void;
   clearActivePreset: () => void;
 }
 
@@ -85,6 +92,104 @@ export function useChromaConsoleEditor(deviceName: string): UseChromaConsoleEdit
   const [originalPresetState, setOriginalPresetState] = useState<ChromaConsoleState | null>(null);
   const [isDirty, setIsDirty] = useState(false);
 
+  // Handle incoming MIDI CC messages from the pedal
+  const handleMidiCC = useCallback((event: MidiCCEvent) => {
+    // Only update state, don't send MIDI back (avoid feedback loop)
+    setState(prev => {
+      if (!prev) return null;
+      
+      const newState = { ...prev };
+      
+      // Map CC numbers to state properties
+      switch (event.cc_number) {
+        // Primary controls
+        case 64: newState.tilt = event.value; break;
+        case 66: newState.rate = event.value; break;
+        case 68: newState.time = event.value; break;
+        case 70: newState.mix = event.value; break;
+        case 65: newState.amount_character = event.value; break;
+        case 67: newState.amount_movement = event.value; break;
+        case 69: newState.amount_diffusion = event.value; break;
+        case 71: newState.amount_texture = event.value; break;
+        
+        // Secondary controls
+        case 72: newState.sensitivity = event.value; break;
+        case 74: newState.drift_movement = event.value; break;
+        case 76: newState.drift_diffusion = event.value; break;
+        case 78: newState.output_level = event.value; break;
+        case 73: newState.effect_vol_character = event.value; break;
+        case 75: newState.effect_vol_movement = event.value; break;
+        case 77: newState.effect_vol_diffusion = event.value; break;
+        case 79: newState.effect_vol_texture = event.value; break;
+        
+        // Module selections (CC 16-19) - also update bypass state
+        // Each module uses ranges: 0-21, 22-43, 44-65, 66-87, 88-109, 110-127 (Off)
+        case 16: { // Character module
+          const module: CharacterModule = 
+            event.value < 22 ? 'Drive' :
+            event.value < 44 ? 'Sweeten' :
+            event.value < 66 ? 'Fuzz' :
+            event.value < 88 ? 'Howl' :
+            event.value < 110 ? 'Swell' : 'Off';
+          newState.character_module = module;
+          newState.character_bypass = module === 'Off';
+          break;
+        }
+        case 17: { // Movement module
+          const module: MovementModule = 
+            event.value < 22 ? 'Doubler' :
+            event.value < 44 ? 'Vibrato' :
+            event.value < 66 ? 'Phaser' :
+            event.value < 88 ? 'Tremolo' :
+            event.value < 110 ? 'Pitch' : 'Off';
+          newState.movement_module = module;
+          newState.movement_bypass = module === 'Off';
+          break;
+        }
+        case 18: { // Diffusion module
+          const module: DiffusionModule = 
+            event.value < 22 ? 'Cascade' :
+            event.value < 44 ? 'Reels' :
+            event.value < 66 ? 'Space' :
+            event.value < 88 ? 'Collage' :
+            event.value < 110 ? 'Reverse' : 'Off';
+          newState.diffusion_module = module;
+          newState.diffusion_bypass = module === 'Off';
+          break;
+        }
+        case 19: { // Texture module
+          const module: TextureModule = 
+            event.value < 22 ? 'Filter' :
+            event.value < 44 ? 'Squash' :
+            event.value < 66 ? 'Cassette' :
+            event.value < 88 ? 'Broken' :
+            event.value < 110 ? 'Interference' : 'Off';
+          newState.texture_module = module;
+          newState.texture_bypass = module === 'Off';
+          break;
+        }
+        
+        // Bypass controls (0-63 = engaged, 64-127 = bypassed - inverted logic!)
+        case 91: 
+          newState.bypass_state = event.value < 64 ? 'Engaged' : 'Bypass';
+          break;
+        case 103: newState.character_bypass = event.value < 64; break;
+        case 104: newState.movement_bypass = event.value < 64; break;
+        case 105: newState.diffusion_bypass = event.value < 64; break;
+        case 106: newState.texture_bypass = event.value < 64; break;
+        
+        default:
+          // Ignore unmapped CC numbers
+          return prev;
+      }
+      
+      return newState;
+    });
+  }, []);
+
+  // Listen for incoming MIDI from the pedal
+  useMIDIInput(handleMidiCC, deviceName);
+
   // Load initial state
   useEffect(() => {
     let mounted = true;
@@ -94,6 +199,10 @@ export function useChromaConsoleEditor(deviceName: string): UseChromaConsoleEdit
         setIsLoading(true);
         const initialState = await getChromaConsoleState(deviceName);
         if (mounted) {
+          // Ensure signal_path exists (backend doesn't know about this app-only field)
+          if (!initialState.signal_path) {
+            initialState.signal_path = ['character', 'movement', 'diffusion', 'texture'];
+          }
           setState(initialState);
           setError(null);
         }
@@ -222,24 +331,35 @@ export function useChromaConsoleEditor(deviceName: string): UseChromaConsoleEdit
   }, [setParameter]);
 
   // Module selections
+  // When a module is selected, automatically manage bypass state:
+  // - If module is "Off" → set bypass to true
+  // - If module is any effect → set bypass to false
   const setCharacterModule = useCallback(async (module: CharacterModule) => {
-    setState(prev => prev ? { ...prev, character_module: module } : null);
+    const bypass = module === 'Off';
+    setState(prev => prev ? { ...prev, character_module: module, character_bypass: bypass } : null);
     await setParameter({ CharacterModule: module });
+    await setParameter({ CharacterBypass: bypass });
   }, [setParameter]);
 
   const setMovementModule = useCallback(async (module: MovementModule) => {
-    setState(prev => prev ? { ...prev, movement_module: module } : null);
+    const bypass = module === 'Off';
+    setState(prev => prev ? { ...prev, movement_module: module, movement_bypass: bypass } : null);
     await setParameter({ MovementModule: module });
+    await setParameter({ MovementBypass: bypass });
   }, [setParameter]);
 
   const setDiffusionModule = useCallback(async (module: DiffusionModule) => {
-    setState(prev => prev ? { ...prev, diffusion_module: module } : null);
+    const bypass = module === 'Off';
+    setState(prev => prev ? { ...prev, diffusion_module: module, diffusion_bypass: bypass } : null);
     await setParameter({ DiffusionModule: module });
+    await setParameter({ DiffusionBypass: bypass });
   }, [setParameter]);
 
   const setTextureModule = useCallback(async (module: TextureModule) => {
-    setState(prev => prev ? { ...prev, texture_module: module } : null);
+    const bypass = module === 'Off';
+    setState(prev => prev ? { ...prev, texture_module: module, texture_bypass: bypass } : null);
     await setParameter({ TextureModule: module });
+    await setParameter({ TextureBypass: bypass });
   }, [setParameter]);
 
   // Bypass controls
@@ -302,12 +422,22 @@ export function useChromaConsoleEditor(deviceName: string): UseChromaConsoleEdit
     await setParameter({ CalibrationLevel: level });
   }, [setParameter]);
 
+  // Signal path (app-only metadata, not sent to pedal)
+  const setSignalPath = useCallback((newPath: ModuleSlot[]) => {
+    setState(prev => prev ? { ...prev, signal_path: newPath } : null);
+    // Note: This does NOT send MIDI - it's app-only metadata
+  }, []);
+
   // Preset management
   const loadPreset = useCallback(async (
     presetState: ChromaConsoleState,
     presetId?: string,
     presetName?: string
   ) => {
+    // Ensure signal_path exists for older presets saved before this feature
+    if (!presetState.signal_path) {
+      presetState.signal_path = ['character', 'movement', 'diffusion', 'texture'];
+    }
     setState(presetState);
     if (presetId && presetName) {
       setActivePreset({ id: presetId, name: presetName });
@@ -326,6 +456,46 @@ export function useChromaConsoleEditor(deviceName: string): UseChromaConsoleEdit
       setIsDirty(false);
     }
   }, [originalPresetState]);
+
+  const resetToPedalDefault = useCallback(async () => {
+    // Create a state with all knobs at their noon position (63 = middle of 0-127)
+    const defaultState = createDefaultState();
+    const noonValue = 63;
+    
+    const pedalDefaultState: ChromaConsoleState = {
+      ...defaultState,
+      // Set all knob parameters to noon (63)
+      tilt: noonValue,
+      rate: noonValue,
+      time: noonValue,
+      mix: noonValue,
+      amount_character: noonValue,
+      amount_movement: noonValue,
+      amount_diffusion: noonValue,
+      amount_texture: noonValue,
+      sensitivity: noonValue,
+      drift_movement: noonValue,
+      drift_diffusion: noonValue,
+      output_level: noonValue,
+      effect_vol_character: noonValue,
+      effect_vol_movement: noonValue,
+      effect_vol_diffusion: noonValue,
+      effect_vol_texture: noonValue,
+      // Keep current signal path
+      signal_path: state?.signal_path || defaultState.signal_path,
+    };
+    
+    // Send defaults to pedal via MIDI
+    await recallChromaConsolePreset(deviceName, pedalDefaultState);
+    
+    // Update UI state
+    setState(pedalDefaultState);
+    
+    // Clear active preset since we're resetting to pedal default
+    setActivePreset(null);
+    setOriginalPresetState(null);
+    setIsDirty(false);
+  }, [state, deviceName]);
 
   const clearActivePreset = useCallback(() => {
     setActivePreset(null);
@@ -380,11 +550,15 @@ export function useChromaConsoleEditor(deviceName: string): UseChromaConsoleEdit
     setFilterMode,
     setCalibrationLevel,
     
+    // Signal path
+    setSignalPath,
+    
     // Preset management
     loadPreset,
     activePreset,
     isDirty,
     resetToPreset,
+    resetToPedalDefault,
     clearActivePreset,
   };
 }

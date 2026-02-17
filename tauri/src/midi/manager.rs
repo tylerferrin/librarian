@@ -6,12 +6,24 @@ use crate::midi::pedals::{Microcosm, GenLossMkii, ChromaConsole};
 use crate::midi::pedals::microcosm::{MicrocosmParameter, MicrocosmState};
 use crate::midi::pedals::gen_loss_mkii::{GenLossMkiiParameter, GenLossMkiiState};
 use crate::midi::pedals::chroma_console::{ChromaConsoleParameter, ChromaConsoleState};
+use serde::{Serialize, Deserialize};
+use tauri::Emitter;
 
-use midir::{MidiOutput, MidiOutputConnection};
+use midir::{MidiOutput, MidiOutputConnection, MidiInput, MidiInputConnection, Ignore};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+
+/// MIDI CC message event payload for frontend
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MidiCCEvent {
+    pub device_name: String,
+    pub pedal_type: String,
+    pub channel: u8,
+    pub cc_number: u8,
+    pub value: u8,
+}
 
 /// Type of pedal device
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -29,9 +41,11 @@ pub struct ConnectedDevice {
     pub midi_channel: u8,
 }
 
-/// Active MIDI connection with send capability
+/// Active MIDI connection with bidirectional capability
 struct MidiConnection {
     output: MidiOutputConnection,
+    #[allow(dead_code)]
+    input: Option<MidiInputConnection<()>>,
     midi_channel: u8,
 }
 
@@ -43,15 +57,9 @@ impl MidiConnection {
         let status = 0xB0 + (self.midi_channel - 1);
         let message = [status, cc_number, value];
         
-        // Debug logging
-        println!("📤 Sending MIDI: Channel {}, CC {}, Value {} (bytes: [{:#04X}, {:#04X}, {:#04X}])", 
-            self.midi_channel, cc_number, value, status, cc_number, value);
-        
         self.output
             .send(&message)
             .map_err(|e| MidiError::SendFailed(e.to_string()))?;
-        
-        println!("✅ MIDI sent successfully");
         
         Ok(())
     }
@@ -63,14 +71,9 @@ impl MidiConnection {
         let status = 0xC0 + (self.midi_channel - 1);
         let message = [status, program];
         
-        println!("📤 Sending MIDI Program Change: Channel {}, Program {} (bytes: [{:#04X}, {:#04X}])", 
-            self.midi_channel, program, status, program);
-        
         self.output
             .send(&message)
             .map_err(|e| MidiError::SendFailed(e.to_string()))?;
-        
-        println!("✅ MIDI Program Change sent successfully");
         
         Ok(())
     }
@@ -96,6 +99,7 @@ enum DeviceConnection {
 pub struct MidiManager {
     connections: HashMap<String, DeviceConnection>,
     midi_output: Option<MidiOutput>,
+    app_handle: Option<tauri::AppHandle>,
 }
 
 impl MidiManager {
@@ -107,7 +111,125 @@ impl MidiManager {
         Ok(Self {
             connections: HashMap::new(),
             midi_output: Some(midi_output),
+            app_handle: None,
         })
+    }
+    
+    /// Set the Tauri app handle for event emission
+    pub fn set_app_handle(&mut self, handle: tauri::AppHandle) {
+        self.app_handle = Some(handle);
+    }
+    
+    /// Setup MIDI input listener for a device
+    fn setup_midi_input(
+        &self,
+        device_name: &str,
+        pedal_type: PedalType,
+        midi_channel: u8,
+    ) -> MidiResult<Option<MidiInputConnection<()>>> {
+        // Only setup input if we have an app handle
+        if self.app_handle.is_none() {
+            println!("⚠️  No app handle available, skipping MIDI input setup");
+            return Ok(None);
+        }
+        
+        let mut midi_in = MidiInput::new("Librarian Input")
+            .map_err(|e| MidiError::Other(e.to_string()))?;
+        midi_in.ignore(Ignore::None);
+        
+        // List all available input ports (debug mode only)
+        #[cfg(debug_assertions)]
+        {
+            println!("🔍 Available MIDI input ports:");
+            for port in midi_in.ports().iter() {
+                if let Ok(name) = midi_in.port_name(port) {
+                    println!("   - {}", name);
+                }
+            }
+        }
+        
+        // Find the matching input port
+        let in_ports = midi_in.ports();
+        let port_opt = in_ports.into_iter()
+            .find(|p| {
+                midi_in.port_name(p)
+                    .map(|name| {
+                        let matches = name.to_lowercase().contains(&device_name.to_lowercase());
+                        if matches {
+                            println!("✅ Found matching input port: {}", name);
+                        }
+                        matches
+                    })
+                    .unwrap_or(false)
+            });
+        
+        if let Some(port) = port_opt {
+            let device_name_clone = device_name.to_string();
+            let pedal_type_str = match pedal_type {
+                PedalType::Microcosm => "Microcosm".to_string(),
+                PedalType::GenLossMkii => "GenLossMkii".to_string(),
+                PedalType::ChromaConsole => "ChromaConsole".to_string(),
+            };
+            let app_handle = self.app_handle.as_ref().unwrap().clone();
+            
+            let conn_in = midi_in.connect(
+                &port,
+                "librarian-listener",
+                move |_stamp, message, _| {
+                    if message.is_empty() {
+                        return;
+                    }
+                    
+                    let status = message[0];
+                    
+                    // Filter out System Real-Time messages (0xF8-0xFF)
+                    // 0xF8 = MIDI Clock (sent 24 times per quarter note)
+                    // 0xFA = Start, 0xFB = Continue, 0xFC = Stop
+                    // 0xFE = Active Sensing, 0xFF = System Reset
+                    if status >= 0xF8 {
+                        // Silently ignore timing/sync messages
+                        return;
+                    }
+                    
+                    // Parse CC messages (need at least 3 bytes)
+                    if message.len() >= 3 {
+                        let data1 = message[1];
+                        let data2 = message[2];
+                        
+                        // Check if it's a Control Change message (0xB0-0xBF)
+                        if status >= 0xB0 && status <= 0xBF {
+                            let channel = (status & 0x0F) + 1;
+                            
+                            // Process messages on the correct channel
+                            if channel == midi_channel {
+                                let event = MidiCCEvent {
+                                    device_name: device_name_clone.clone(),
+                                    pedal_type: pedal_type_str.clone(),
+                                    channel,
+                                    cc_number: data1,
+                                    value: data2,
+                                };
+                                
+                                println!("📥 MIDI CC: {}, CC#={}, Value={}", 
+                                    event.device_name, event.cc_number, event.value);
+                                
+                                // Emit event to frontend
+                                if let Err(e) = app_handle.emit("midi-cc-received", &event) {
+                                    eprintln!("❌ Failed to emit MIDI event: {}", e);
+                                }
+                            }
+                        }
+                    }
+                },
+                (),
+            ).map_err(|e| MidiError::ConnectionFailed(e.to_string()))?;
+            
+            println!("✅ MIDI input listener setup for: {}", device_name);
+            Ok(Some(conn_in))
+        } else {
+            println!("⚠️  No MIDI input port found for: {}", device_name);
+            Ok(None)
+        }
     }
     
     /// List all available MIDI output devices
@@ -162,9 +284,13 @@ impl MidiManager {
         let output = midi_out.connect(&port, "Librarian")
             .map_err(|e| MidiError::ConnectionFailed(e.to_string()))?;
         
+        // Setup MIDI input for bidirectional communication
+        let input = self.setup_midi_input(device_name, PedalType::Microcosm, midi_channel)?;
+        
         // Create connection and device state
         let connection = MidiConnection {
             output,
+            input,
             midi_channel,
         };
         
@@ -221,9 +347,13 @@ impl MidiManager {
         let output = midi_out.connect(&port, "Librarian")
             .map_err(|e| MidiError::ConnectionFailed(e.to_string()))?;
         
+        // Setup MIDI input for bidirectional communication
+        let input = self.setup_midi_input(device_name, PedalType::GenLossMkii, midi_channel)?;
+        
         // Create connection and device state
         let connection = MidiConnection {
             output,
+            input,
             midi_channel,
         };
         
@@ -278,9 +408,13 @@ impl MidiManager {
         let output = midi_out.connect(&port, "Librarian")
             .map_err(|e| MidiError::ConnectionFailed(e.to_string()))?;
         
+        // Setup MIDI input for bidirectional communication
+        let input = self.setup_midi_input(device_name, PedalType::ChromaConsole, midi_channel)?;
+        
         // Create connection and device state
         let connection = MidiConnection {
             output,
+            input,
             midi_channel,
         };
         
@@ -390,11 +524,16 @@ impl MidiManager {
                 };
                 let cc_map = temp_microcosm.state_as_cc_map();
                 
-                // Send all CC messages with throttling
+                println!("[Microcosm] Recalling preset: sending {} CC messages", cc_map.len());
+                
+                // Send all CC messages with increased throttling to prevent buffer overflow
                 for (cc_number, value) in cc_map.iter() {
                     connection.send_cc(*cc_number, *value)?;
-                    thread::sleep(Duration::from_millis(10)); // Throttle to avoid MIDI buffer overflow
+                    println!("[Microcosm] Sent CC#{}: {}", cc_number, value);
+                    thread::sleep(Duration::from_millis(20)); // Increased delay for reliability
                 }
+                
+                println!("[Microcosm] Preset recall complete");
                 
                 // Update device state
                 *device_state = temp_microcosm;
@@ -423,11 +562,16 @@ impl MidiManager {
                 };
                 let cc_map = temp_gen_loss.state_as_cc_map();
                 
-                // Send all CC messages with throttling
+                println!("[Gen Loss MKII] Recalling preset: sending {} CC messages", cc_map.len());
+                
+                // Send all CC messages with increased throttling to prevent buffer overflow
                 for (cc_number, value) in cc_map.iter() {
                     connection.send_cc(*cc_number, *value)?;
-                    thread::sleep(Duration::from_millis(10)); // Throttle to avoid MIDI buffer overflow
+                    println!("[Gen Loss MKII] Sent CC#{}: {}", cc_number, value);
+                    thread::sleep(Duration::from_millis(20)); // Increased delay for reliability
                 }
+                
+                println!("[Gen Loss MKII] Preset recall complete");
                 
                 // Update device state
                 *device_state = temp_gen_loss;
@@ -483,6 +627,25 @@ impl MidiManager {
         }
     }
     
+    /// Send a program change to a Chroma Console (0-79 for 80 user presets)
+    pub fn send_chroma_console_program_change(
+        &mut self,
+        device_name: &str,
+        program: u8,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        
+        match device {
+            DeviceConnection::ChromaConsole { connection, state } => {
+                connection.send_program_change(program)?;
+                state.load_preset(program);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Chroma Console".to_string())),
+        }
+    }
+    
     /// Recall a preset on a Chroma Console (send all parameters)
     pub fn recall_chroma_console_preset(
         &mut self,
@@ -501,11 +664,16 @@ impl MidiManager {
                 };
                 let cc_map = temp_chroma.state_as_cc_map();
                 
-                // Send all CC messages with throttling
+                println!("[Chroma Console] Recalling preset: sending {} CC messages", cc_map.len());
+                
+                // Send all CC messages with increased throttling to prevent buffer overflow
                 for (cc_number, value) in cc_map.iter() {
                     connection.send_cc(*cc_number, *value)?;
-                    thread::sleep(Duration::from_millis(10)); // Throttle to avoid MIDI buffer overflow
+                    println!("[Chroma Console] Sent CC#{}: {}", cc_number, value);
+                    thread::sleep(Duration::from_millis(20)); // Increased delay for reliability
                 }
+                
+                println!("[Chroma Console] Preset recall complete");
                 
                 // Update device state
                 *device_state = temp_chroma;

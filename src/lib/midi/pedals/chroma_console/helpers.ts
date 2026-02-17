@@ -67,6 +67,9 @@ export function createDefaultState(): ChromaConsoleState {
     capture_routing: 'PostFx',
     filter_mode: 'Lpf',
     calibration_level: 'Medium',
+    
+    // Signal path order (app-only metadata)
+    signal_path: ['character', 'movement', 'diffusion', 'texture'],
   };
 }
 

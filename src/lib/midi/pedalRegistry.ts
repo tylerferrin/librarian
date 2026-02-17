@@ -1,6 +1,8 @@
 // Plugin registry for pedal discovery
 // This infrastructure layer has no pedal-specific knowledge
 
+import type { BankConfig } from '../presets/types';
+
 export interface PedalDefinition {
   type: string;
   name: string;
@@ -8,6 +10,7 @@ export interface PedalDefinition {
   icon: string;
   color: string;
   hasEditor: boolean;
+  bankConfig?: BankConfig; // Optional - only for pedals with preset banks
 }
 
 class PedalRegistry {

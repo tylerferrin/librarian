@@ -8,6 +8,10 @@ export function useMicrocosmEditor(deviceName: string) {
   const [activePreset, setActivePreset] = useState<{ id: string; name: string; state: MicrocosmState } | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const throttleTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  
+  // Tap tempo tracking
+  const [_tapTimes, setTapTimes] = useState<number[]>([]);
+  const [calculatedBPM, setCalculatedBPM] = useState<number | null>(null);
 
   // Load initial state from backend
   useEffect(() => {
@@ -210,7 +214,56 @@ export function useMicrocosmEditor(deviceName: string) {
 
   // Trigger actions (fire-and-forget)
   const tapTempo = useCallback(() => {
+    const now = Date.now();
+    console.log('[Microcosm] Tap tempo triggered - sending CC#93');
     sendParam(midi.MicrocosmParams.tapTempo(), 0);
+    
+    // Track tap for BPM calculation
+    setTapTimes((prev) => {
+      const newTaps = [...prev, now].slice(-4); // Keep last 4 taps
+      
+      // Calculate BPM from tap intervals
+      if (newTaps.length >= 2) {
+        const intervals = [];
+        for (let i = 1; i < newTaps.length; i++) {
+          intervals.push(newTaps[i] - newTaps[i - 1]);
+        }
+        const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+        const bpm = Math.round(60000 / avgInterval);
+        setCalculatedBPM(bpm);
+      }
+      
+      return newTaps;
+    });
+    
+    // Clear old taps after 3 seconds of inactivity
+    setTimeout(() => {
+      setTapTimes((prev) => {
+        const recent = prev.filter((t) => Date.now() - t < 3000);
+        if (recent.length < 2) {
+          setCalculatedBPM(null);
+        }
+        return recent;
+      });
+    }, 3000);
+  }, [sendParam]);
+  
+  const toggleTempoMode = useCallback(() => {
+    setState((s) => {
+      if (!s) return s;
+      const newTempoMode = !s.tempo_mode;
+      
+      // When switching to tempo mode, always set subdivision to TAP
+      if (newTempoMode) {
+        console.log('[Microcosm] Switching to tempo mode - setting subdivision to TAP');
+        sendParam(midi.MicrocosmParams.subdivision('Tap'), 0);
+        return { ...s, tempo_mode: newTempoMode, subdivision: 'Tap' };
+      }
+      
+      // When switching back to subdiv mode, keep current subdivision but mark mode change
+      return { ...s, tempo_mode: newTempoMode };
+    });
+    setIsDirty(true);
   }, [sendParam]);
 
   const setReverseEffect = useCallback((v: boolean) => {
@@ -262,10 +315,17 @@ export function useMicrocosmEditor(deviceName: string) {
   }, [deviceName, markDirty]);
 
   // Load a preset (updates both MIDI and local state)
-  const loadPreset = useCallback(async (presetState: MicrocosmState, presetId?: string, presetName?: string) => {
+  const loadPreset = useCallback(async (
+    presetState: MicrocosmState, 
+    presetId?: string, 
+    presetName?: string,
+    skipMidiSend?: boolean  // Add parameter to skip MIDI send for pedal-bank recalls
+  ) => {
     try {
-      // Send to pedal
-      await midi.recallMicrocosmPreset(deviceName, presetState);
+      // Send to pedal (unless we're loading from pedal-bank where PC already sent)
+      if (!skipMidiSend) {
+        await midi.recallMicrocosmPreset(deviceName, presetState);
+      }
       // Update local state
       setState(presetState);
       // Track the active preset
@@ -285,6 +345,62 @@ export function useMicrocosmEditor(deviceName: string) {
       await loadPreset(activePreset.state, activePreset.id, activePreset.name);
     }
   }, [activePreset, loadPreset]);
+
+  // Reset to pedal default (all knobs at noon position)
+  const resetToPedalDefault = useCallback(async () => {
+    const noonValue = 63;
+    
+    const pedalDefaultState: MicrocosmState = {
+      // Keep current effect selection
+      current_effect: state?.current_effect || 'Mosaic',
+      current_variation: state?.current_variation || 'A',
+      
+      // Time controls
+      subdivision: 'Tap',
+      time: noonValue,
+      hold_sampler: false,
+      
+      // Special Sauce
+      activity: noonValue,
+      repeats: noonValue,
+      
+      // Modulation
+      shape: 'Triangle',
+      frequency: noonValue,
+      depth: noonValue,
+      
+      // Filter
+      cutoff: noonValue,
+      resonance: noonValue,
+      
+      // Effect
+      mix: noonValue,
+      volume: noonValue,
+      reverse_effect: false,
+      bypass: false,
+      
+      // Reverb
+      space: noonValue,
+      reverb_time: noonValue,
+      
+      // Looper
+      loop_level: noonValue,
+      looper_speed: noonValue,
+      looper_speed_stepped: 'Tap',
+      fade_time: noonValue,
+      looper_enabled: false,
+      playback_direction: 'Forward',
+      routing: 'PostFX',
+      looper_only: false,
+      burst_mode: false,
+      quantized: false,
+    };
+    
+    await loadPreset(pedalDefaultState);
+    // Clear active preset since we're resetting to pedal default
+    setActivePreset(null);
+    setIsDirty(false);
+  }, [state, loadPreset]);
 
   // Clear the active preset (e.g., when manually creating new sounds)
   const clearActivePreset = useCallback(() => {
@@ -311,8 +427,12 @@ export function useMicrocosmEditor(deviceName: string) {
     // State management
     loadPreset,
     resetToPreset,
+    resetToPedalDefault,
     clearActivePreset,
     refreshState,
+    // Tempo mode
+    calculatedBPM,
+    toggleTempoMode,
     // Continuous
     setActivity, setRepeats, setTime,
     setFrequency, setDepth,

@@ -4,8 +4,10 @@
 mod types;
 mod repository;
 mod bank_tracker;
+pub mod bank_config;
 
 pub use types::*;
+pub use bank_config::{BankConfig, MidiSaveCapability};
 use repository::PresetRepository;
 use bank_tracker::BankTracker;
 
@@ -166,20 +168,32 @@ impl PresetLibrary {
     
     /// Get the state of all pedal banks
     pub fn get_bank_state(&self, pedal_type: &str) -> Result<Vec<BankSlot>> {
-        // Microcosm user banks are PC 45-60
-        self.bank_tracker.get_bank_state(pedal_type, 45..=60)
+        // Get pedal-specific bank configuration
+        let config = bank_config::get_bank_config(pedal_type)
+            .ok_or_else(|| PresetError::Midi(format!("No bank configuration for pedal type: {}", pedal_type)))?;
+        
+        let range = config.program_change_start..=config.program_change_end;
+        self.bank_tracker.get_bank_state(pedal_type, range, &config)
     }
     
     /// Assign a preset to a specific pedal bank
     pub fn assign_to_bank(&self, pedal_type: &str, bank_number: u8, preset_id: &PresetId) -> Result<()> {
-        let bank = BankNumber::new(bank_number)?;
-        self.bank_tracker.assign_to_bank(pedal_type, bank, preset_id)
+        // Validate bank number against pedal config
+        let config = bank_config::get_bank_config(pedal_type)
+            .ok_or_else(|| PresetError::Midi(format!("No bank configuration for pedal type: {}", pedal_type)))?;
+        
+        let _ = BankNumber::new(bank_number, &config)?; // Validates the bank number
+        self.bank_tracker.assign_to_bank(pedal_type, bank_number, preset_id)
     }
     
     /// Clear a bank assignment
     pub fn clear_bank(&self, pedal_type: &str, bank_number: u8) -> Result<()> {
-        let bank = BankNumber::new(bank_number)?;
-        self.bank_tracker.clear_bank(pedal_type, bank)
+        // Validate bank number against pedal config
+        let config = bank_config::get_bank_config(pedal_type)
+            .ok_or_else(|| PresetError::Midi(format!("No bank configuration for pedal type: {}", pedal_type)))?;
+        
+        let _ = BankNumber::new(bank_number, &config)?; // Validates the bank number
+        self.bank_tracker.clear_bank(pedal_type, bank_number)
     }
     
     /// Get all presets with their bank assignments (for library drawer)
@@ -189,8 +203,12 @@ impl PresetLibrary {
     
     /// Get the preset assigned to a specific bank
     pub fn get_bank_preset(&self, pedal_type: &str, bank_number: u8) -> Result<Option<Preset>> {
-        let bank = BankNumber::new(bank_number)?;
-        self.bank_tracker.get_bank_preset(pedal_type, bank)
+        // Validate bank number against pedal config
+        let config = bank_config::get_bank_config(pedal_type)
+            .ok_or_else(|| PresetError::Midi(format!("No bank configuration for pedal type: {}", pedal_type)))?;
+        
+        let _ = BankNumber::new(bank_number, &config)?; // Validates the bank number
+        self.bank_tracker.get_bank_preset(pedal_type, bank_number)
     }
 }
 

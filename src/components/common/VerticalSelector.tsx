@@ -15,9 +15,6 @@ interface VerticalSelectorProps {
   optionColors?: string[];
 }
 
-// Default color sequence: red, yellow, green, blue, purple
-const DEFAULT_COLOR_SEQUENCE = ['#ef4444', '#eab308', '#22c55e', '#38bdf8', '#a855f7'];
-
 export function VerticalSelector({ 
   label, 
   value, 
@@ -47,7 +44,7 @@ export function VerticalSelector({
               className={`
                 px-2 py-1.5 rounded text-[11px] font-medium transition-all duration-150 text-left
                 ${isActive 
-                  ? 'text-white shadow-sm border' 
+                  ? 'text-white shadow-sm border animate-breathe' 
                   : 'bg-card-bg border border-control-border text-text-primary hover:border-control-hover hover:bg-control-hover'
                 }
               `}

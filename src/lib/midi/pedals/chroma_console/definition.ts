@@ -9,4 +9,16 @@ export const chromaConsoleDefinition: PedalDefinition = {
   icon: '🎨',
   color: '#06b6d4',
   hasEditor: true,
+  bankConfig: {
+    programChangeStart: 0,
+    programChangeEnd: 79,
+    numBanks: 4,
+    slotsPerBank: 20,
+    bankLabels: ['A', 'B', 'C', 'D'],
+    bankColors: ['red', 'orange', 'green', 'blue'],
+    midiSave: {
+      type: 'manualOnly',
+      instructions: 'Press and hold the footswitch to save the preset to the pedal\'s internal memory',
+    },
+  },
 };

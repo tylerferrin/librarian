@@ -14,6 +14,11 @@ pub struct MicrocosmState {
     pub time: u8,
     pub hold_sampler: bool,
     
+    // UI preferences (not sent to pedal)
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tempo_mode: Option<bool>, // true = tempo mode (BPM display), false/None = subdivision mode
+    
     // Special Sauce
     pub activity: u8,
     pub repeats: u8,
@@ -58,6 +63,7 @@ impl Default for MicrocosmState {
             subdivision: SubdivisionValue::QuarterNote,
             time: 64,
             hold_sampler: false,
+            tempo_mode: None,
             activity: 64,
             repeats: 64,
             shape: WaveformShape::Square,

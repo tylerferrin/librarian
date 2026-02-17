@@ -9,4 +9,17 @@ export const microcosmDefinition: PedalDefinition = {
   icon: '🌌',
   color: '#a855f7',
   hasEditor: true,
+  bankConfig: {
+    programChangeStart: 45,
+    programChangeEnd: 60,
+    numBanks: 4,
+    slotsPerBank: 4,
+    bankLabels: ['1', '2', '3', '4'],
+    bankColors: ['red', 'yellow', 'green', 'blue'],
+    midiSave: {
+      type: 'supported',
+      ccNumber: 46,
+      description: 'CC 46 - Preset Save',
+    },
+  },
 };

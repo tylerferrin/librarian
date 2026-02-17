@@ -5,7 +5,7 @@ use crate::midi::{SharedMidiManager, ConnectedDevice, PedalType, request_device_
 use crate::midi::pedals::microcosm::{MicrocosmParameter, MicrocosmState};
 use crate::midi::pedals::gen_loss_mkii::{GenLossMkiiParameter, GenLossMkiiState};
 use crate::midi::pedals::chroma_console::{ChromaConsoleParameter, ChromaConsoleState};
-use crate::presets::{SharedPresetLibrary, Preset, PresetId, PresetFilter, BankSlot, PresetWithBanks};
+use crate::presets::{self, SharedPresetLibrary, Preset, PresetId, PresetFilter, BankSlot, PresetWithBanks, MidiSaveCapability};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -243,6 +243,18 @@ pub async fn send_chroma_console_parameter(
         .map_err(|e| e.to_string())
 }
 
+/// Send a program change to a Chroma Console (0-79)
+#[tauri::command]
+pub async fn send_chroma_console_program_change(
+    manager: State<'_, SharedMidiManager>,
+    device_name: String,
+    program: u8,
+) -> Result<(), String> {
+    let mut manager = manager.lock().map_err(|e| e.to_string())?;
+    manager.send_chroma_console_program_change(&device_name, program)
+        .map_err(|e| e.to_string())
+}
+
 /// Get current Chroma Console state
 #[tauri::command]
 pub async fn get_chroma_console_state(
@@ -372,11 +384,9 @@ pub async fn get_bank_state(
     library: State<'_, SharedPresetLibrary>,
     pedal_type: String,
 ) -> Result<Vec<BankSlot>, String> {
-    println!("🔍 get_bank_state called with pedal_type: {}", pedal_type);
     let library = library.lock().map_err(|e| e.to_string())?;
     let result = library.get_bank_state(&pedal_type)
         .map_err(|e| e.to_string())?;
-    println!("📦 get_bank_state returning {} bank slots", result.len());
     Ok(result)
 }
 
@@ -394,6 +404,18 @@ pub async fn assign_to_bank(
         .map_err(|e| e.to_string())
 }
 
+/// Clear a bank slot (unassign preset from slot without deleting preset)
+#[tauri::command]
+pub async fn clear_bank(
+    library: State<'_, SharedPresetLibrary>,
+    pedal_type: String,
+    bank_number: u8,
+) -> Result<(), String> {
+    let library = library.lock().map_err(|e| e.to_string())?;
+    library.clear_bank(&pedal_type, bank_number)
+        .map_err(|e| e.to_string())
+}
+
 /// Get all presets with their bank assignments (for library drawer)
 #[tauri::command]
 pub async fn get_presets_with_banks(
@@ -405,7 +427,24 @@ pub async fn get_presets_with_banks(
         .map_err(|e| e.to_string())
 }
 
-/// Save a preset to a specific pedal bank (recalls preset, then sends CC 46 to save)
+/// Get the bank configuration for a specific pedal type
+#[tauri::command]
+pub async fn get_bank_config(pedal_type: String) -> Result<presets::BankConfig, String> {
+    presets::bank_config::get_bank_config(&pedal_type)
+        .ok_or_else(|| format!("No bank configuration for pedal type: {}", pedal_type))
+}
+
+/// Result of saving a preset to a bank - includes save capability info for UI feedback
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveToBankResult {
+    pub success: bool,
+    pub saved_via_midi: bool,
+    pub manual_save_required: bool,
+    pub instructions: Option<String>,
+}
+
+/// Save a preset to a specific pedal bank (universal for all pedals)
 #[tauri::command]
 pub async fn save_preset_to_bank(
     midi_manager: State<'_, SharedMidiManager>,
@@ -413,7 +452,7 @@ pub async fn save_preset_to_bank(
     device_name: String,
     preset_id: String,
     bank_number: u8,
-) -> Result<(), String> {
+) -> Result<SaveToBankResult, String> {
     // Get the preset
     let id = PresetId::new(preset_id.clone());
     let preset = {
@@ -421,34 +460,81 @@ pub async fn save_preset_to_bank(
         library.get_preset(&id).map_err(|e| e.to_string())?
     };
     
-    // Send program change to switch to the target bank
-    {
-        let mut manager = midi_manager.lock().map_err(|e| e.to_string())?;
-        manager.send_microcosm_program_change(&device_name, bank_number)
-            .map_err(|e| e.to_string())?;
-    }
+    // Get bank config to determine save capability
+    let bank_config = presets::bank_config::get_bank_config(&preset.pedal_type)
+        .ok_or_else(|| format!("No bank configuration for pedal type: {}", preset.pedal_type))?;
     
-    // Wait for pedal to switch banks
-    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+    // Step 1: Send program change to switch to target bank (universal)
+    // Step 2: Send all parameters to load preset (universal)
+    // Step 3: Send save command (capability-dependent)
     
-    // Deserialize and send all parameters
-    let state: MicrocosmState = serde_json::from_value(preset.parameters.clone())
-        .map_err(|e| format!("Failed to deserialize preset parameters: {}", e))?;
-    
-    {
-        let mut manager = midi_manager.lock().map_err(|e| e.to_string())?;
-        manager.recall_microcosm_preset(&device_name, &state)
-            .map_err(|e| e.to_string())?;
-    }
-    
-    // Wait for parameters to apply
-    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-    
-    // Send CC 46 (Preset Save) to save to pedal
-    {
-        let mut manager = midi_manager.lock().map_err(|e| e.to_string())?;
-        manager.send_microcosm_parameter(&device_name, MicrocosmParameter::PresetSave)
-            .map_err(|e| e.to_string())?;
+    match preset.pedal_type.as_str() {
+        "Microcosm" => {
+            let state: MicrocosmState = serde_json::from_value(preset.parameters.clone())
+                .map_err(|e| format!("Failed to deserialize preset: {}", e))?;
+            
+            let midi_program = bank_number - 1;
+            
+            // OPTIMIZED SEQUENCE: Copy → Navigate → Save
+            // Assumes pedal is already configured (true when updating from editor)
+            // Manual: Hold (copy) → Turn to slot → Hold again (save)
+            // MIDI: CC 45 → PC to slot → CC 46
+            
+            println!("[Save to Bank] Saving current pedal state to bank {}", bank_number);
+            
+            // Step 1: Copy (enters paste mode, pedal flashes blue)
+            {
+                let mut manager = midi_manager.lock().map_err(|e| e.to_string())?;
+                println!("[Save to Bank] Copy (CC 45)");
+                manager.send_microcosm_parameter(&device_name, MicrocosmParameter::PresetCopy)
+                    .map_err(|e| e.to_string())?;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+            
+            // Step 2: Navigate to target user bank (stays in paste mode)
+            {
+                let mut manager = midi_manager.lock().map_err(|e| e.to_string())?;
+                println!("[Save to Bank] Navigate to bank {} (PC {})", bank_number, midi_program);
+                manager.send_microcosm_program_change(&device_name, midi_program)
+                    .map_err(|e| e.to_string())?;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+            
+            // Step 3: Save/Paste (pedal flashes blue again)
+            {
+                let mut manager = midi_manager.lock().map_err(|e| e.to_string())?;
+                println!("[Save to Bank] Save (CC 46)");
+                manager.send_microcosm_parameter(&device_name, MicrocosmParameter::PresetSave)
+                    .map_err(|e| e.to_string())?;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+            
+            println!("[Save to Bank] ✅ Saved to bank {}", bank_number);
+        }
+        "ChromaConsole" => {
+            // Send program change
+            {
+                let mut manager = midi_manager.lock().map_err(|e| e.to_string())?;
+                manager.send_chroma_console_program_change(&device_name, bank_number)
+                    .map_err(|e| e.to_string())?;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            
+            // Recall preset (send all parameters)
+            let state: ChromaConsoleState = serde_json::from_value(preset.parameters.clone())
+                .map_err(|e| format!("Failed to deserialize preset: {}", e))?;
+            
+            {
+                let mut manager = midi_manager.lock().map_err(|e| e.to_string())?;
+                manager.recall_chroma_console_preset(&device_name, &state)
+                    .map_err(|e| e.to_string())?;
+            }
+            
+            // No MIDI save command - user must manually save
+        }
+        _ => {
+            return Err(format!("Unsupported pedal type: {}", preset.pedal_type));
+        }
     }
     
     // Update bank assignment in database
@@ -458,5 +544,27 @@ pub async fn save_preset_to_bank(
             .map_err(|e| e.to_string())?;
     }
     
-    Ok(())
+    // Return result based on save capability
+    let result = match &bank_config.midi_save {
+        MidiSaveCapability::Supported { .. } => SaveToBankResult {
+            success: true,
+            saved_via_midi: true,
+            manual_save_required: false,
+            instructions: None,
+        },
+        MidiSaveCapability::ManualOnly { instructions } => SaveToBankResult {
+            success: true,
+            saved_via_midi: false,
+            manual_save_required: true,
+            instructions: Some(instructions.clone()),
+        },
+        MidiSaveCapability::AutoSave => SaveToBankResult {
+            success: true,
+            saved_via_midi: true,
+            manual_save_required: false,
+            instructions: None,
+        },
+    };
+    
+    Ok(result)
 }

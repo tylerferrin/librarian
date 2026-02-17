@@ -2,7 +2,7 @@
 // This file provides type-safe access to the Rust MIDI backend
 
 import { invoke } from '@tauri-apps/api/core';
-import type { DeviceInfo } from './types';
+import type { DeviceInfo, PedalType } from './types';
 
 // ============================================================================
 // Common MIDI Manager API
@@ -40,4 +40,4 @@ export async function isDeviceConnected(deviceName: string): Promise<boolean> {
 // Re-export types
 // ============================================================================
 
-export type { DeviceInfo };
+export type { DeviceInfo, PedalType };

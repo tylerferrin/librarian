@@ -297,3 +297,227 @@ impl MicrocosmState {
         map
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    // Test SubdivisionValue conversions
+    #[test]
+    fn test_subdivision_to_cc() {
+        assert_eq!(SubdivisionValue::QuarterNote.to_cc_value(), 0);
+        assert_eq!(SubdivisionValue::HalfNote.to_cc_value(), 1);
+        assert_eq!(SubdivisionValue::Tap.to_cc_value(), 2);
+        assert_eq!(SubdivisionValue::Double.to_cc_value(), 3);
+        assert_eq!(SubdivisionValue::Quadruple.to_cc_value(), 4);
+        assert_eq!(SubdivisionValue::Octuple.to_cc_value(), 5);
+    }
+    
+    #[test]
+    fn test_subdivision_from_cc() {
+        assert_eq!(
+            SubdivisionValue::from_cc_value(0).unwrap(),
+            SubdivisionValue::QuarterNote
+        );
+        assert_eq!(
+            SubdivisionValue::from_cc_value(1).unwrap(),
+            SubdivisionValue::HalfNote
+        );
+        assert_eq!(
+            SubdivisionValue::from_cc_value(5).unwrap(),
+            SubdivisionValue::Octuple
+        );
+        
+        // Invalid value
+        assert!(SubdivisionValue::from_cc_value(6).is_err());
+    }
+    
+    // Test WaveformShape conversions
+    #[test]
+    fn test_waveform_to_cc() {
+        assert_eq!(WaveformShape::Square.to_cc_value(), 16);
+        assert_eq!(WaveformShape::Ramp.to_cc_value(), 48);
+        assert_eq!(WaveformShape::Triangle.to_cc_value(), 80);
+        assert_eq!(WaveformShape::Saw.to_cc_value(), 112);
+    }
+    
+    #[test]
+    fn test_waveform_from_cc() {
+        assert_eq!(WaveformShape::from_cc_value(0), WaveformShape::Square);
+        assert_eq!(WaveformShape::from_cc_value(31), WaveformShape::Square);
+        assert_eq!(WaveformShape::from_cc_value(32), WaveformShape::Ramp);
+        assert_eq!(WaveformShape::from_cc_value(63), WaveformShape::Ramp);
+        assert_eq!(WaveformShape::from_cc_value(64), WaveformShape::Triangle);
+        assert_eq!(WaveformShape::from_cc_value(95), WaveformShape::Triangle);
+        assert_eq!(WaveformShape::from_cc_value(96), WaveformShape::Saw);
+        assert_eq!(WaveformShape::from_cc_value(127), WaveformShape::Saw);
+    }
+    
+    // Test PlaybackDirection conversions
+    #[test]
+    fn test_playback_direction_to_cc() {
+        assert_eq!(PlaybackDirection::Forward.to_cc_value(), 0);
+        assert_eq!(PlaybackDirection::Reverse.to_cc_value(), 127);
+    }
+    
+    #[test]
+    fn test_playback_direction_from_cc() {
+        assert_eq!(
+            PlaybackDirection::from_cc_value(0),
+            PlaybackDirection::Forward
+        );
+        assert_eq!(
+            PlaybackDirection::from_cc_value(63),
+            PlaybackDirection::Forward
+        );
+        assert_eq!(
+            PlaybackDirection::from_cc_value(64),
+            PlaybackDirection::Reverse
+        );
+        assert_eq!(
+            PlaybackDirection::from_cc_value(127),
+            PlaybackDirection::Reverse
+        );
+    }
+    
+    // Test LooperRouting conversions
+    #[test]
+    fn test_looper_routing_to_cc() {
+        assert_eq!(LooperRouting::PostFX.to_cc_value(), 0);
+        assert_eq!(LooperRouting::PreFX.to_cc_value(), 127);
+    }
+    
+    #[test]
+    fn test_looper_routing_from_cc() {
+        assert_eq!(LooperRouting::from_cc_value(0), LooperRouting::PostFX);
+        assert_eq!(LooperRouting::from_cc_value(63), LooperRouting::PostFX);
+        assert_eq!(LooperRouting::from_cc_value(64), LooperRouting::PreFX);
+        assert_eq!(LooperRouting::from_cc_value(127), LooperRouting::PreFX);
+    }
+    
+    // Test MicrocosmParameter CC numbers
+    #[test]
+    fn test_parameter_cc_numbers() {
+        assert_eq!(MicrocosmParameter::Time(64).cc_number(), 10);
+        assert_eq!(MicrocosmParameter::Activity(64).cc_number(), 6);
+        assert_eq!(MicrocosmParameter::Mix(64).cc_number(), 9);
+        assert_eq!(MicrocosmParameter::Subdivision(SubdivisionValue::Tap).cc_number(), 5);
+        assert_eq!(MicrocosmParameter::TapTempo.cc_number(), 93);
+    }
+    
+    // Test MicrocosmParameter CC values
+    #[test]
+    fn test_parameter_cc_values() {
+        // Continuous parameters
+        assert_eq!(MicrocosmParameter::Time(64).cc_value(), 64);
+        assert_eq!(MicrocosmParameter::Activity(127).cc_value(), 127);
+        assert_eq!(MicrocosmParameter::Mix(0).cc_value(), 0);
+        
+        // Binary parameters
+        assert_eq!(MicrocosmParameter::Bypass(true).cc_value(), 127);
+        assert_eq!(MicrocosmParameter::Bypass(false).cc_value(), 0);
+        assert_eq!(MicrocosmParameter::LooperEnabled(true).cc_value(), 127);
+        assert_eq!(MicrocosmParameter::LooperEnabled(false).cc_value(), 0);
+        
+        // Enum parameters
+        assert_eq!(
+            MicrocosmParameter::Subdivision(SubdivisionValue::Tap).cc_value(),
+            2
+        );
+        assert_eq!(
+            MicrocosmParameter::PlaybackDirection(PlaybackDirection::Reverse).cc_value(),
+            127
+        );
+        
+        // Trigger parameters
+        assert_eq!(MicrocosmParameter::TapTempo.cc_value(), 127);
+        assert_eq!(MicrocosmParameter::PresetSave.cc_value(), 127);
+    }
+    
+    // Test MicrocosmParameter names
+    #[test]
+    fn test_parameter_names() {
+        assert_eq!(MicrocosmParameter::Time(64).name(), "Time");
+        assert_eq!(MicrocosmParameter::Activity(64).name(), "Activity");
+        assert_eq!(MicrocosmParameter::Mix(64).name(), "Mix");
+        assert_eq!(MicrocosmParameter::TapTempo.name(), "Tap Tempo");
+    }
+    
+    // Test MicrocosmState to CC map conversion
+    #[test]
+    fn test_state_to_cc_map() {
+        let state = MicrocosmState {
+            current_effect: EffectType::Mosaic,
+            current_variation: EffectVariation::B,
+            subdivision: SubdivisionValue::Tap,
+            time: 64,
+            hold_sampler: true,
+            tempo_mode: None,
+            activity: 100,
+            repeats: 50,
+            shape: WaveformShape::Triangle,
+            frequency: 80,
+            depth: 60,
+            cutoff: 90,
+            resonance: 40,
+            mix: 127,
+            volume: 100,
+            reverse_effect: false,
+            bypass: false,
+            space: 70,
+            reverb_time: 90,
+            loop_level: 80,
+            looper_speed: 64,
+            looper_speed_stepped: SubdivisionValue::QuarterNote,
+            fade_time: 30,
+            looper_enabled: true,
+            playback_direction: PlaybackDirection::Forward,
+            routing: LooperRouting::PreFX,
+            looper_only: false,
+            burst_mode: true,
+            quantized: false,
+        };
+        
+        let cc_map = state.to_cc_map();
+        
+        // Verify some key mappings
+        assert_eq!(cc_map.get(&5), Some(&2)); // subdivision (Tap)
+        assert_eq!(cc_map.get(&10), Some(&64)); // time
+        assert_eq!(cc_map.get(&48), Some(&127)); // hold_sampler (true)
+        assert_eq!(cc_map.get(&6), Some(&100)); // activity
+        assert_eq!(cc_map.get(&9), Some(&127)); // mix
+        assert_eq!(cc_map.get(&22), Some(&127)); // looper_enabled (true)
+        assert_eq!(cc_map.get(&26), Some(&127)); // burst_mode (true)
+        assert_eq!(cc_map.get(&27), Some(&0)); // quantized (false)
+        
+        // Verify all expected keys are present
+        assert!(cc_map.contains_key(&5));  // subdivision
+        assert!(cc_map.contains_key(&10)); // time
+        assert!(cc_map.contains_key(&6));  // activity
+        assert!(cc_map.contains_key(&9));  // mix
+    }
+    
+    // Test round-trip conversions
+    #[test]
+    fn test_subdivision_round_trip() {
+        for i in 0..=5 {
+            let subdivision = SubdivisionValue::from_cc_value(i).unwrap();
+            assert_eq!(subdivision.to_cc_value(), i);
+        }
+    }
+    
+    #[test]
+    fn test_playback_direction_round_trip() {
+        let forward = PlaybackDirection::Forward;
+        assert_eq!(
+            PlaybackDirection::from_cc_value(forward.to_cc_value()),
+            forward
+        );
+        
+        let reverse = PlaybackDirection::Reverse;
+        assert_eq!(
+            PlaybackDirection::from_cc_value(reverse.to_cc_value()),
+            reverse
+        );
+    }
+}

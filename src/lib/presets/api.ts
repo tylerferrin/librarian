@@ -1,6 +1,6 @@
 // Preset management API - wrappers for Tauri commands
 import { invoke } from '@tauri-apps/api/core';
-import type { Preset, PresetWithBanks, BankSlot, PresetFilter, SavePresetParams, UpdatePresetParams } from './types';
+import type { Preset, PresetWithBanks, BankSlot, PresetFilter, SavePresetParams, UpdatePresetParams, SaveToBankResult } from './types';
 
 /**
  * Save a new preset to the library
@@ -85,6 +85,19 @@ export async function assignToBank(
 }
 
 /**
+ * Clear a bank slot (unassign preset from slot without deleting preset)
+ */
+export async function clearBank(
+  pedalType: string,
+  bankNumber: number
+): Promise<void> {
+  return invoke<void>('clear_bank', {
+    pedalType,
+    bankNumber,
+  });
+}
+
+/**
  * Get all presets for a pedal type with their bank assignments.
  * Used by the library drawer to display presets with bank slot badges.
  */
@@ -93,19 +106,21 @@ export async function getPresetsWithBanks(pedalType: string): Promise<PresetWith
 }
 
 /**
- * Save a preset to a specific pedal bank
+ * Save a preset to a specific pedal bank (universal for all pedals)
  * This will:
  * 1. Send program change to switch to the bank
  * 2. Send all preset parameters
- * 3. Send CC 46 to save to the pedal
+ * 3. Send save command (if pedal supports MIDI save)
  * 4. Update the bank assignment in the database
+ * 
+ * @returns SaveToBankResult with save capability information for UI feedback
  */
 export async function savePresetToBank(
   deviceName: string,
   presetId: string,
   bankNumber: number
-): Promise<void> {
-  return invoke<void>('save_preset_to_bank', {
+): Promise<SaveToBankResult> {
+  return invoke<SaveToBankResult>('save_preset_to_bank', {
     deviceName,
     presetId,
     bankNumber,

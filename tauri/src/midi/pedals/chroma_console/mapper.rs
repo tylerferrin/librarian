@@ -87,18 +87,19 @@ impl ChromaConsoleState {
         map.insert(CC_TEXTURE_MODULE, self.texture_module.to_cc_value());
         
         // Bypass state (use standard bypass by default)
+        // NOTE: Chroma Console uses INVERTED logic: 0 = engaged, 127 = bypassed
         let bypass_value = match self.bypass_state {
-            BypassState::Bypass => 0,
-            BypassState::Engaged => 127,
-            BypassState::DualBypass => 48,  // For dual bypass mode
+            BypassState::Bypass => 127,      // Send 127 to bypass (turn off)
+            BypassState::Engaged => 0,        // Send 0 to engage (turn on)
+            BypassState::DualBypass => 48,    // For dual bypass mode
         };
         map.insert(CC_STANDARD_BYPASS, bypass_value);
         
-        // Module bypasses
-        map.insert(CC_CHARACTER_BYPASS, if self.character_bypass { 127 } else { 0 });
-        map.insert(CC_MOVEMENT_BYPASS, if self.movement_bypass { 127 } else { 0 });
-        map.insert(CC_DIFFUSION_BYPASS, if self.diffusion_bypass { 127 } else { 0 });
-        map.insert(CC_TEXTURE_BYPASS, if self.texture_bypass { 127 } else { 0 });
+        // Module bypasses (true = bypassed, so send 0; false = engaged, so send 127)
+        map.insert(CC_CHARACTER_BYPASS, if self.character_bypass { 0 } else { 127 });
+        map.insert(CC_MOVEMENT_BYPASS, if self.movement_bypass { 0 } else { 127 });
+        map.insert(CC_DIFFUSION_BYPASS, if self.diffusion_bypass { 0 } else { 127 });
+        map.insert(CC_TEXTURE_BYPASS, if self.texture_bypass { 0 } else { 127 });
         
         // Other functions
         map.insert(CC_GESTURE_PLAY_REC, self.gesture_mode.to_cc_value());
@@ -140,24 +141,27 @@ impl ChromaConsoleState {
             CC_TEXTURE_MODULE => self.texture_module = TextureModule::from_cc_value(value),
             
             // Bypass controls
+            // NOTE: Chroma Console uses INVERTED logic: 0-63 = engaged, 64-127 = bypassed
             CC_STANDARD_BYPASS => {
                 self.bypass_state = if value < 64 {
-                    BypassState::Bypass
+                    BypassState::Engaged  // Low values = engaged (on)
                 } else {
-                    BypassState::Engaged
+                    BypassState::Bypass   // High values = bypassed (off)
                 };
             }
             CC_DUAL_BYPASS => {
+                // NOTE: Assuming dual bypass follows same inverted logic
                 self.bypass_state = match value {
-                    0..=31 => BypassState::Bypass,
-                    32..=63 => BypassState::DualBypass,
-                    _ => BypassState::Engaged,
+                    0..=31 => BypassState::Engaged,      // Low = engaged
+                    32..=63 => BypassState::DualBypass,  // Mid = dual bypass
+                    _ => BypassState::Bypass,            // High = bypassed
                 };
             }
-            CC_CHARACTER_BYPASS => self.character_bypass = value >= 64,
-            CC_MOVEMENT_BYPASS => self.movement_bypass = value >= 64,
-            CC_DIFFUSION_BYPASS => self.diffusion_bypass = value >= 64,
-            CC_TEXTURE_BYPASS => self.texture_bypass = value >= 64,
+            // Module bypasses (0-63 = BYPASS = true, 64-127 = ENGAGE = false)
+            CC_CHARACTER_BYPASS => self.character_bypass = value < 64,
+            CC_MOVEMENT_BYPASS => self.movement_bypass = value < 64,
+            CC_DIFFUSION_BYPASS => self.diffusion_bypass = value < 64,
+            CC_TEXTURE_BYPASS => self.texture_bypass = value < 64,
             
             // Other functions
             CC_GESTURE_PLAY_REC => self.gesture_mode = GestureMode::from_cc_value(value),
@@ -252,15 +256,17 @@ impl ChromaConsoleParameter {
             ChromaConsoleParameter::TextureModule(m) => m.to_cc_value(),
             
             // Bypass controls
+            // NOTE: Chroma Console uses INVERTED logic: 0 = engaged, 127 = bypassed
             ChromaConsoleParameter::BypassState(state) => match state {
-                BypassState::Bypass => 0,
-                BypassState::Engaged => 127,
+                BypassState::Bypass => 127,      // Send 127 to bypass (turn off)
+                BypassState::Engaged => 0,        // Send 0 to engage (turn on)
                 BypassState::DualBypass => 48,
             },
+            // Module bypasses (true = bypassed, so send 0; false = engaged, so send 127)
             ChromaConsoleParameter::CharacterBypass(b) |
             ChromaConsoleParameter::MovementBypass(b) |
             ChromaConsoleParameter::DiffusionBypass(b) |
-            ChromaConsoleParameter::TextureBypass(b) |
+            ChromaConsoleParameter::TextureBypass(b) => if *b { 0 } else { 127 },
             ChromaConsoleParameter::CalibrationEnter(b) => if *b { 127 } else { 0 },
             
             // Other functions with enums
@@ -307,18 +313,20 @@ impl ChromaConsoleParameter {
             ChromaConsoleParameter::TextureModule(m) => Some((CC_TEXTURE_MODULE, m.to_cc_value())),
             
             // Bypass controls
+            // NOTE: Chroma Console uses INVERTED logic: 0 = engaged, 127 = bypassed
             ChromaConsoleParameter::BypassState(state) => {
                 let value = match state {
-                    BypassState::Bypass => 0,
-                    BypassState::Engaged => 127,
+                    BypassState::Bypass => 127,      // Send 127 to bypass (turn off)
+                    BypassState::Engaged => 0,        // Send 0 to engage (turn on)
                     BypassState::DualBypass => 48,
                 };
                 Some((CC_STANDARD_BYPASS, value))
             }
-            ChromaConsoleParameter::CharacterBypass(b) => Some((CC_CHARACTER_BYPASS, if *b { 127 } else { 0 })),
-            ChromaConsoleParameter::MovementBypass(b) => Some((CC_MOVEMENT_BYPASS, if *b { 127 } else { 0 })),
-            ChromaConsoleParameter::DiffusionBypass(b) => Some((CC_DIFFUSION_BYPASS, if *b { 127 } else { 0 })),
-            ChromaConsoleParameter::TextureBypass(b) => Some((CC_TEXTURE_BYPASS, if *b { 127 } else { 0 })),
+            // Module bypasses (true = bypassed, so send 0; false = engaged, so send 127)
+            ChromaConsoleParameter::CharacterBypass(b) => Some((CC_CHARACTER_BYPASS, if *b { 0 } else { 127 })),
+            ChromaConsoleParameter::MovementBypass(b) => Some((CC_MOVEMENT_BYPASS, if *b { 0 } else { 127 })),
+            ChromaConsoleParameter::DiffusionBypass(b) => Some((CC_DIFFUSION_BYPASS, if *b { 0 } else { 127 })),
+            ChromaConsoleParameter::TextureBypass(b) => Some((CC_TEXTURE_BYPASS, if *b { 0 } else { 127 })),
             
             // Other functions
             ChromaConsoleParameter::GestureMode(mode) => Some((CC_GESTURE_PLAY_REC, mode.to_cc_value())),

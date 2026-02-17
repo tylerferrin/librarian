@@ -46,6 +46,7 @@ export interface MicrocosmState {
   subdivision: SubdivisionValue;
   time: number;
   hold_sampler: boolean;
+  tempo_mode?: boolean; // UI preference: true = tempo mode (BPM display), false = subdivision mode
   
   // Special Sauce
   activity: number;

@@ -1,11 +1,12 @@
 // Preset Manager - unified interface for managing all 16 preset banks
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, Play, Trash2, AlertCircle, Library } from 'lucide-react';
-import { getBankState, savePreset, savePresetToBank, deletePreset } from '@/lib/presets';
-import type { BankSlot, Preset } from '@/lib/presets/types';
+import { X, Save, Play, Trash2, AlertCircle, Library, AlertTriangle } from 'lucide-react';
+import { getBankState, savePreset, savePresetToBank, deletePreset, clearBank } from '@/lib/presets';
+import type { BankSlot, Preset, BankConfig } from '@/lib/presets/types';
 import type { MicrocosmState } from '@/lib/midi/pedals/microcosm/types';
 import { recallMicrocosmPreset } from '@/lib/midi/pedals/microcosm/api';
+import { pedalRegistry } from '@/lib/midi/pedalRegistry';
 import { ConfirmModal } from './ConfirmModal';
 import { LibraryDrawer } from './LibraryDrawer';
 
@@ -16,7 +17,7 @@ interface PresetManagerProps {
   pedalType: string;
   currentState: MicrocosmState | any;
   activePresetId?: string | null;
-  onLoadPreset?: (state: MicrocosmState, presetId?: string, presetName?: string) => Promise<void>;
+  onLoadPreset?: (state: MicrocosmState, presetId?: string, presetName?: string, skipMidiSend?: boolean) => Promise<void>;
   onPresetSaved?: (presetId: string, presetName: string) => void;
   onPresetCleared?: () => void;
 }
@@ -34,6 +35,7 @@ export function PresetManager({
 }: PresetManagerProps) {
   const [banks, setBanks] = useState<BankSlot[]>([]);
   const [loading, setLoading] = useState(true);
+  const [bankConfig, setBankConfig] = useState<BankConfig | null>(null);
   
   // Save preset dialog state
   const [savingToBank, setSavingToBank] = useState<number | null>(null);
@@ -49,14 +51,44 @@ export function PresetManager({
   // Confirmation modals
   const [confirmReplace, setConfirmReplace] = useState<{ bankNumber: number; preset: Preset } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Preset | null>(null);
+  const [confirmUnassign, setConfirmUnassign] = useState<{ preset: Preset; bankNumber: number } | null>(null);
 
   // Library drawer state
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [libraryTargetSlot, setLibraryTargetSlot] = useState<number | null>(null);
+  
+  // Manual save instruction state
+  const [manualSaveInstructions, setManualSaveInstructions] = useState<string | null>(null);
+
+  // Chroma Console warning state
+  const [showChromaWarning, setShowChromaWarning] = useState(false);
+  const [showDontShowAgainDialog, setShowDontShowAgainDialog] = useState(false);
+
+  // Load bank config from pedal definition
+  useEffect(() => {
+    const pedal = pedalRegistry.get(pedalType);
+    if (pedal?.bankConfig) {
+      setBankConfig(pedal.bankConfig);
+    }
+  }, [pedalType]);
 
   useEffect(() => {
-    if (isOpen && banks.length === 0) {
+    if (isOpen && banks.length === 0 && bankConfig) {
       loadBanks();
+    }
+  }, [isOpen, pedalType, bankConfig]);
+
+  // Check if we should show Chroma Console warning when manager opens
+  useEffect(() => {
+    if (isOpen && pedalType === 'ChromaConsole') {
+      const dismissed = localStorage.getItem('chromaConsole.libraryWarning.dismissed');
+      if (!dismissed) {
+        setShowChromaWarning(true);
+      }
+    } else {
+      // Reset warning state when manager closes
+      setShowChromaWarning(false);
+      setShowDontShowAgainDialog(false);
     }
   }, [isOpen, pedalType]);
 
@@ -69,22 +101,44 @@ export function PresetManager({
   }, [isOpen]);
 
   const loadBanks = async () => {
+    if (!bankConfig) return;
+    
     try {
       setLoading(true);
       const bankState = await getBankState(pedalType);
       
-      // Always ensure we have all 16 slots
+      // Use backend data if available, otherwise create empty slots based on config
       if (!bankState || bankState.length === 0) {
         const emptyBanks: BankSlot[] = [];
-        const colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6'];
+        const COLOR_MAP: Record<string, string> = {
+          red: '#ef4444',
+          orange: '#f59e0b',
+          yellow: '#f59e0b',
+          green: '#10b981',
+          blue: '#3b82f6',
+        };
         
-        for (let i = 45; i <= 60; i++) {
-          const bankGroup = Math.floor((i - 45) / 4);
-          const slotLetter = String.fromCharCode(65 + ((i - 45) % 4));
+        for (let i = bankConfig.programChangeStart; i <= bankConfig.programChangeEnd; i++) {
+          const offset = i - bankConfig.programChangeStart;
+          const bankIndex = Math.floor(offset / bankConfig.slotsPerBank);
+          const slotIndex = offset % bankConfig.slotsPerBank;
+          
+          const bankLabel = bankConfig.bankLabels[bankIndex] || `${bankIndex + 1}`;
+          const colorName = bankConfig.bankColors[bankIndex] || 'gray';
+          const color = COLOR_MAP[colorName.toLowerCase()] || '#6b7280';
+          
+          let label: string;
+          if (bankConfig.slotsPerBank <= 4) {
+            const slotLetter = String.fromCharCode(65 + slotIndex);
+            label = `Bank ${bankLabel}${slotLetter}`;
+          } else {
+            label = `Bank ${bankLabel}-${slotIndex + 1}`;
+          }
+          
           emptyBanks.push({
             bankNumber: i,
-            bankLabel: `Bank ${bankGroup + 1}${slotLetter}`,
-            color: colors[bankGroup],
+            bankLabel: label,
+            color: color,
             preset: undefined,
           });
         }
@@ -95,20 +149,8 @@ export function PresetManager({
     } catch (error) {
       console.error('Failed to load bank state:', error);
       
-      // On error, still create empty slots so UI isn't broken
-      const emptyBanks: BankSlot[] = [];
-      const colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6'];
-      for (let i = 45; i <= 60; i++) {
-        const bankGroup = Math.floor((i - 45) / 4);
-        const slotLetter = String.fromCharCode(65 + ((i - 45) % 4));
-        emptyBanks.push({
-          bankNumber: i,
-          bankLabel: `Bank ${bankGroup + 1}${slotLetter}`,
-          color: colors[bankGroup],
-          preset: undefined,
-        });
-      }
-      setBanks(emptyBanks);
+      // On error, set empty banks
+      setBanks([]);
     } finally {
       setLoading(false);
     }
@@ -141,7 +183,7 @@ export function PresetManager({
     presetName: string,
   ) => {
     if (onLoadPreset) {
-      await onLoadPreset(state, presetId, presetName);
+      await onLoadPreset(state, presetId, presetName, false); // Always send MIDI from library
     } else {
       await recallMicrocosmPreset(deviceName, state);
     }
@@ -197,7 +239,7 @@ export function PresetManager({
         tags: tagArray,
       });
 
-      await savePresetToBank(deviceName, preset.id, savingToBank);
+      const result = await savePresetToBank(deviceName, preset.id, savingToBank);
 
       if (onPresetSaved) {
         onPresetSaved(preset.id, preset.name);
@@ -209,9 +251,14 @@ export function PresetManager({
       setPresetTags('');
       await loadBanks();
       
-      setTimeout(() => {
-        onClose();
-      }, 300);
+      // Show manual save instructions if needed
+      if (result.manualSaveRequired && result.instructions) {
+        setManualSaveInstructions(result.instructions);
+      } else {
+        setTimeout(() => {
+          onClose();
+        }, 300);
+      }
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -219,15 +266,52 @@ export function PresetManager({
     }
   };
 
-  const handleLoadPreset = async (preset: Preset) => {
+  const handleLoadPreset = async (preset: Preset, bankNumber?: number) => {
     try {
       setLoadingPresetId(preset.id);
-      const state = preset.parameters as MicrocosmState;
+      const state = preset.parameters as any; // Type varies by pedal type
       
-      if (onLoadPreset) {
-        await onLoadPreset(state, preset.id, preset.name);
+      if (bankNumber !== undefined) {
+        // Loading from pedal-bank: Send ONLY program change to bank slot
+        // The pedal will recall all settings including effect type from its internal storage
+        console.log(`[PresetManager] Loading from pedal bank slot ${bankNumber} (sending only PC)`);
+        
+        // Dynamically select the correct API based on pedal type
+        if (pedalType === 'ChromaConsole') {
+          const { sendChromaConsoleProgramChange } = await import('@/lib/midi/pedals/chroma_console/api');
+          // Chroma Console: PC 0-79 maps directly to banks A-D (0-79)
+          await sendChromaConsoleProgramChange(deviceName, bankNumber);
+        } else if (pedalType === 'Microcosm') {
+          const { sendMicrocosmProgramChange } = await import('@/lib/midi/pedals/microcosm/api');
+          // Microcosm: Banks are stored as 45-60 but MIDI PC is 0-indexed, so subtract 1
+          console.log(`[PresetManager] Microcosm: UI bank ${bankNumber} → MIDI PC ${bankNumber - 1}`);
+          await sendMicrocosmProgramChange(deviceName, bankNumber - 1);
+        } else {
+          throw new Error(`Unsupported pedal type for program change: ${pedalType}`);
+        }
+        
+        // Update the UI to reflect the preset that was recalled on the pedal
+        // Pass skipMidiSend=true since we already sent the PC to the pedal
+        if (onLoadPreset) {
+          console.log('[PresetManager] Updating UI state to match pedal (skip MIDI send)');
+          await onLoadPreset(state, preset.id, preset.name, true);
+        }
       } else {
-        await recallMicrocosmPreset(deviceName, state);
+        // Loading from app library: Send all parameters via CCs
+        console.log('[PresetManager] Loading from app library (sending all CCs)');
+        if (onLoadPreset) {
+          await onLoadPreset(state, preset.id, preset.name, false);
+        } else {
+          // Fallback for direct loading (should rarely happen)
+          if (pedalType === 'ChromaConsole') {
+            const { recallChromaConsolePreset } = await import('@/lib/midi/pedals/chroma_console/api');
+            await recallChromaConsolePreset(deviceName, state);
+          } else if (pedalType === 'Microcosm') {
+            await recallMicrocosmPreset(deviceName, state);
+          } else {
+            throw new Error(`Unsupported pedal type for recall: ${pedalType}`);
+          }
+        }
       }
       
       setTimeout(() => {
@@ -256,6 +340,32 @@ export function PresetManager({
     } catch (error) {
       console.error('Failed to delete preset:', error);
     }
+  };
+
+  const handleUnassignFromBank = async () => {
+    if (!confirmUnassign) return;
+
+    try {
+      await clearBank(pedalType, confirmUnassign.bankNumber);
+      setConfirmUnassign(null);
+      await loadBanks();
+    } catch (error) {
+      console.error('Failed to unassign preset from bank:', error);
+    }
+  };
+
+  const handleDismissChromaWarning = () => {
+    setShowChromaWarning(false);
+    setShowDontShowAgainDialog(true);
+  };
+
+  const handleDontShowAgain = () => {
+    localStorage.setItem('chromaConsole.libraryWarning.dismissed', 'true');
+    setShowDontShowAgainDialog(false);
+  };
+
+  const handleShowAgainLater = () => {
+    setShowDontShowAgainDialog(false);
   };
 
   const content = (
@@ -324,20 +434,22 @@ export function PresetManager({
               )}
               
               {/* Bank Groups */}
-              {[1, 2, 3, 4].map((bankGroup) => {
-                const bankSlots = banks.filter(
-                  (slot) => Math.floor((slot.bankNumber - 45) / 4) === bankGroup - 1
-                );
+              {bankConfig && Array.from({ length: bankConfig.numBanks }, (_, i) => i).map((bankIndex) => {
+                const bankSlots = banks.filter(slot => {
+                  const offset = slot.bankNumber - bankConfig.programChangeStart;
+                  return Math.floor(offset / bankConfig.slotsPerBank) === bankIndex;
+                });
                 const color = bankSlots[0]?.color || 'gray';
+                const bankLabel = bankConfig.bankLabels[bankIndex] || `${bankIndex + 1}`;
 
                 return (
-                  <div key={bankGroup} className="space-y-2">
+                  <div key={bankIndex} className="space-y-2">
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary flex items-center gap-2 px-1">
                       <div
                         className="w-2.5 h-2.5 rounded-full border border-border-default"
                         style={{ backgroundColor: color }}
                       />
-                      Bank {bankGroup} ({bankSlots.length} slots)
+                      Bank {bankLabel} ({bankSlots.length} slots)
                     </h3>
 
                     <div className="space-y-2">
@@ -345,9 +457,8 @@ export function PresetManager({
                         <div className="text-xs text-text-muted px-1">No slots in this bank</div>
                       ) : (
                         bankSlots.map((slot) => {
-                        const slotLetter = String.fromCharCode(
-                          65 + (slot.bankNumber - 45) % 4
-                        );
+                        // Extract slot letter/number from bank label (e.g., "Bank 1A" -> "A", "Bank A-5" -> "5")
+                        const slotLabel = slot.bankLabel.split(/[-\s]/).pop() || '';
 
                         return (
                           <div
@@ -357,7 +468,7 @@ export function PresetManager({
                             {/* Slot Label */}
                             <div className="flex items-center justify-center w-8 h-8 rounded-md bg-card-header border border-border-light">
                               <span className="text-xs font-mono font-semibold text-text-primary">
-                                {slotLetter}
+                                {slotLabel}
                               </span>
                             </div>
 
@@ -376,7 +487,7 @@ export function PresetManager({
                                 </div>
                                 <div className="flex items-center gap-2 w-[140px]">
                                   <button
-                                    onClick={() => handleLoadPreset(slot.preset!)}
+                                    onClick={() => handleLoadPreset(slot.preset!, slot.bankNumber)}
                                     disabled={loadingPresetId === slot.preset!.id}
                                     className="flex items-center justify-center gap-1.5 flex-1 py-1.5 bg-accent-blue/10 hover:bg-accent-blue/20 border border-accent-blue/30 rounded-md text-accent-blue text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                   >
@@ -393,8 +504,9 @@ export function PresetManager({
                                     )}
                                   </button>
                                   <button
-                                    onClick={() => setConfirmDelete(slot.preset!)}
+                                    onClick={() => setConfirmUnassign({ preset: slot.preset!, bankNumber: slot.bankNumber })}
                                     className="p-1.5 hover:bg-accent-red/10 border border-control-border hover:border-accent-red/30 rounded-md text-text-muted hover:text-accent-red transition-colors flex-shrink-0"
+                                    title="Unassign from bank"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
@@ -432,6 +544,63 @@ export function PresetManager({
             </div>
           )}
         </div>
+
+        {/* Chroma Console Library Warning Overlay */}
+        {showChromaWarning && pedalType === 'ChromaConsole' && (
+          <div
+            className="absolute inset-0 flex items-center justify-center p-6"
+            style={{
+              zIndex: 10000,
+              backgroundColor: 'rgba(0, 0, 0, 0.75)',
+              backdropFilter: 'blur(2px)',
+            }}
+          >
+            <div
+              className="bg-card-bg rounded-lg shadow-2xl max-w-lg w-full border-2 border-amber-500/50"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-start gap-3 px-6 py-4 bg-amber-500/10 border-b border-amber-500/20">
+                <AlertTriangle className="w-6 h-6 text-amber-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-text-primary">
+                    Important: Chroma Console Library Limitations
+                  </h3>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="px-6 py-5 space-y-4 text-sm text-text-primary leading-relaxed">
+                <p>
+                  <strong>The Chroma Console does not support saving user presets via MIDI.</strong>
+                </p>
+                
+                <p>
+                  This preset bank can be used to visually represent what you manually save on your pedal, 
+                  but it can easily become out of sync if you make any saves directly on the pedal without 
+                  making the corresponding update here.
+                </p>
+                
+                <div className="pt-2 border-t border-border-light">
+                  <p className="text-accent-blue font-medium">
+                    Good news: You'll always have access to your library of Chroma Console 
+                    presets that you can load onto your pedal, for future pedal preset bank rearranging.
+                  </p>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 bg-card-header border-t border-border-light">
+                <button
+                  onClick={handleDismissChromaWarning}
+                  className="w-full px-4 py-2.5 text-sm font-medium rounded-md bg-accent-blue text-white hover:bg-accent-blue/90 transition-colors"
+                >
+                  I Understand
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Library Drawer */}
@@ -568,6 +737,51 @@ export function PresetManager({
         variant="danger"
         onConfirm={handleDeletePreset}
         onCancel={() => setConfirmDelete(null)}
+      />
+
+      {/* Unassign from Bank Confirmation */}
+      <ConfirmModal
+        isOpen={confirmUnassign !== null}
+        title="Unassign from Bank?"
+        message={`Remove "${confirmUnassign?.preset.name}" from this bank slot? The preset will remain in your library.`}
+        confirmLabel="Unassign"
+        cancelLabel="Cancel"
+        variant="warning"
+        onConfirm={handleUnassignFromBank}
+        onCancel={() => setConfirmUnassign(null)}
+      />
+      
+      {/* Manual Save Instructions Modal */}
+      <ConfirmModal
+        isOpen={manualSaveInstructions !== null}
+        title="Preset Loaded - Manual Save Required"
+        message={`✅ Preset loaded successfully!\n\n⚠️ ${manualSaveInstructions || ''}`}
+        confirmLabel="Got it"
+        variant="info"
+        onConfirm={() => {
+          setManualSaveInstructions(null);
+          setTimeout(() => {
+            onClose();
+          }, 300);
+        }}
+        onCancel={() => {
+          setManualSaveInstructions(null);
+          setTimeout(() => {
+            onClose();
+          }, 300);
+        }}
+      />
+
+      {/* Don't Show Again Dialog */}
+      <ConfirmModal
+        isOpen={showDontShowAgainDialog}
+        title="Hide This Warning?"
+        message="Would you like to hide this warning in future sessions? You can always use this library, but this reminder helps prevent confusion about the Chroma Console's MIDI limitations."
+        confirmLabel="Don't Show Again"
+        cancelLabel="Show Again Next Time"
+        variant="info"
+        onConfirm={handleDontShowAgain}
+        onCancel={handleShowAgainLater}
       />
     </>
   );

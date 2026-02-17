@@ -72,3 +72,42 @@ impl Microcosm {
         self.state.to_cc_map()
     }
 }
+
+// Implement PedalCapabilities trait for compile-time enforcement
+impl super::PedalCapabilities for Microcosm {
+    type State = MicrocosmState;
+    type Parameter = MicrocosmParameter;
+    
+    fn metadata(&self) -> super::PedalMetadata {
+        super::PedalMetadata {
+            name: "Microcosm",
+            manufacturer: "Hologram Electronics",
+            supports_editor: true,
+            supports_preset_library: true,
+        }
+    }
+    
+    fn supports_program_change(&self) -> bool {
+        true
+    }
+    
+    fn midi_channel(&self) -> u8 {
+        self.midi_channel
+    }
+    
+    fn state(&self) -> &Self::State {
+        &self.state
+    }
+    
+    fn update_state(&mut self, param: &Self::Parameter) {
+        self.update_state(param)
+    }
+    
+    fn state_as_cc_map(&self) -> std::collections::HashMap<u8, u8> {
+        self.state_as_cc_map()
+    }
+    
+    fn load_preset(&mut self, program: u8) {
+        self.set_current_preset(program);
+    }
+}

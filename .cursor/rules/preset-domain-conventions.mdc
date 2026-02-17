@@ -27,12 +27,25 @@ pub struct Preset {
 - Manual pedal saves make tracking stale (expected)
 - No synchronization from pedal to app (MIDI read not supported)
 
-## MIDI Bank Save Timing
+## MIDI Bank Save Sequence
 
-Required delays for Microcosm:
-- 50ms after program change
-- 10ms between CC messages
-- 50ms before CC 46 (save)
+**Microcosm working sequence (verified):**
+1. Load factory effect (PC 0-43)
+2. Apply CC parameters (Activity, Mix, etc.)
+3. Send Copy (CC 45) - enters paste mode → **WAIT 1 second**
+4. Send PC to user bank (PC 44-59) - selects target slot → **WAIT 1 second**
+5. Send Save (CC 46) - pastes copied preset → **WAIT 1 second**
+
+**Key insights:**
+- PC after CC 45 doesn't exit paste mode, it selects the target slot
+- 1 second delays are REQUIRED between copy/navigate/save steps
+- This replicates manual "Hold → Turn → Hold" workflow
+- PC numbers are 0-indexed: Bank 1A (docs say PC 45) = MIDI PC 44
+
+**Timing:**
+- 100ms after loading factory effect
+- 50ms after applying CCs
+- **1000ms** between copy/navigate/save (critical!)
 
 ## Frontend Organization
 
