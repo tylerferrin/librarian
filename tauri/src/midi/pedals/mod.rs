@@ -3,10 +3,12 @@
 pub mod microcosm;
 pub mod gen_loss_mkii;
 pub mod chroma_console;
+pub mod preamp_mk2;
 
 pub use microcosm::Microcosm;
 pub use gen_loss_mkii::GenLossMkii;
 pub use chroma_console::ChromaConsole;
+pub use preamp_mk2::PreampMk2;
 
 use std::collections::HashMap;
 

@@ -78,7 +78,7 @@ impl BankConfig {
             let slot_letter = char::from(b'A' + slot_idx as u8);
             Some(format!("{}{}", bank_label, slot_letter))
         } else {
-            Some(format!("{}-{}", bank_label, slot_idx + 1))
+            Some(format!("{}-{}", bank_label, slot_idx))
         }
     }
     
@@ -133,6 +133,26 @@ pub fn get_bank_config(pedal_type: &str) -> Option<BankConfig> {
             ],
             midi_save: MidiSaveCapability::ManualOnly {
                 instructions: "Press and hold the footswitch to save the preset to the pedal's internal memory".to_string(),
+            },
+        }),
+        "PreampMk2" => Some(BankConfig {
+            program_change_start: 0,
+            program_change_end: 29,
+            num_banks: 3,
+            slots_per_bank: 10,
+            bank_labels: vec![
+                "1".to_string(),
+                "2".to_string(),
+                "3".to_string(),
+            ],
+            bank_colors: vec![
+                "red".to_string(),
+                "green".to_string(),
+                "blue".to_string(),
+            ],
+            midi_save: MidiSaveCapability::Supported {
+                cc_number: 27,
+                description: "CC 27 with value 0-29 saves to that preset slot".to_string(),
             },
         }),
         _ => None,

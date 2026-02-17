@@ -2,10 +2,11 @@
 // Handles device connections, message sending, and state management
 
 use crate::midi::error::{MidiError, MidiResult};
-use crate::midi::pedals::{Microcosm, GenLossMkii, ChromaConsole};
+use crate::midi::pedals::{Microcosm, GenLossMkii, ChromaConsole, PreampMk2};
 use crate::midi::pedals::microcosm::{MicrocosmParameter, MicrocosmState};
 use crate::midi::pedals::gen_loss_mkii::{GenLossMkiiParameter, GenLossMkiiState};
 use crate::midi::pedals::chroma_console::{ChromaConsoleParameter, ChromaConsoleState};
+use crate::midi::pedals::preamp_mk2::{PreampMk2Parameter, PreampMk2State, CC_PRESET_SAVE};
 use serde::{Serialize, Deserialize};
 use tauri::Emitter;
 
@@ -31,6 +32,7 @@ pub enum PedalType {
     Microcosm,
     GenLossMkii,
     ChromaConsole,
+    PreampMk2,
 }
 
 /// Information about a connected device
@@ -92,6 +94,10 @@ enum DeviceConnection {
     ChromaConsole {
         connection: MidiConnection,
         state: ChromaConsole,
+    },
+    PreampMk2 {
+        connection: MidiConnection,
+        state: PreampMk2,
     },
 }
 
@@ -169,6 +175,7 @@ impl MidiManager {
                 PedalType::Microcosm => "Microcosm".to_string(),
                 PedalType::GenLossMkii => "GenLossMkii".to_string(),
                 PedalType::ChromaConsole => "ChromaConsole".to_string(),
+                PedalType::PreampMk2 => "PreampMk2".to_string(),
             };
             let app_handle = self.app_handle.as_ref().unwrap().clone();
             
@@ -695,6 +702,197 @@ impl MidiManager {
         }
     }
     
+    // ========================================================================
+    // Chase Bliss Preamp MK II Methods
+    // ========================================================================
+    
+    /// Connect to a Chase Bliss Preamp MK II
+    pub fn connect_preamp_mk2(
+        &mut self,
+        device_name: &str,
+        midi_channel: u8,
+    ) -> MidiResult<()> {
+        // Validate channel (1-16)
+        if midi_channel < 1 || midi_channel > 16 {
+            return Err(MidiError::InvalidChannel(midi_channel));
+        }
+        
+        // Check if already connected
+        if self.connections.contains_key(device_name) {
+            return Err(MidiError::AlreadyConnected(device_name.to_string()));
+        }
+        
+        // Find the MIDI port
+        let midi_out = self.midi_output.take()
+            .ok_or_else(|| MidiError::Other("MIDI output not initialized".to_string()))?;
+        
+        // Find the matching port by iterating and collecting the port we need
+        let port_opt = {
+            let ports = midi_out.ports();
+            ports.into_iter()
+                .find(|p| {
+                    midi_out.port_name(p)
+                        .map(|name| name.to_lowercase().contains(&device_name.to_lowercase()))
+                        .unwrap_or(false)
+                })
+        };
+        
+        let port = port_opt.ok_or_else(|| MidiError::DeviceNotFound(device_name.to_string()))?;
+        
+        // Connect to the output port
+        let output = midi_out
+            .connect(&port, "Librarian")
+            .map_err(|e| MidiError::ConnectionFailed(e.to_string()))?;
+        
+        // Setup MIDI input for bidirectional communication
+        let input = self.setup_midi_input(device_name, PedalType::PreampMk2, midi_channel)?;
+        
+        // Create connection and device state
+        let connection = MidiConnection {
+            output,
+            input,
+            midi_channel,
+        };
+        
+        let state = PreampMk2::new(midi_channel);
+        
+        self.connections.insert(
+            device_name.to_string(),
+            DeviceConnection::PreampMk2 { connection, state },
+        );
+        
+        println!("✅ Connected to Preamp MK II: '{}' on MIDI Channel {}", device_name, midi_channel);
+        
+        // Reinitialize MIDI output for future connections
+        self.midi_output = Some(MidiOutput::new("Librarian Output")
+            .map_err(|e| MidiError::Other(e.to_string()))?);
+        
+        Ok(())
+    }
+    
+    /// Send a parameter change to a Preamp MK II
+    pub fn send_preamp_mk2_parameter(
+        &mut self,
+        device_name: &str,
+        param: PreampMk2Parameter,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        
+        match device {
+            DeviceConnection::PreampMk2 { connection, state } => {
+                let cc_number = param.cc_number();
+                let cc_value = param.cc_value();
+                
+                #[cfg(debug_assertions)]
+                println!("[Preamp MK II] Sending CC#{} = {} (ch {})", cc_number, cc_value, connection.midi_channel);
+                
+                connection.send_cc(cc_number, cc_value)?;
+                state.update_state(&param);
+                
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Preamp MK II".to_string())),
+        }
+    }
+    
+    /// Send a Program Change to a Preamp MK II to recall a preset (PC 0-29 → presets 0-29)
+    pub fn send_preamp_mk2_program_change(
+        &mut self,
+        device_name: &str,
+        program: u8,
+    ) -> MidiResult<()> {
+        if program > 29 {
+            return Err(MidiError::Other(format!("Invalid preset slot: {}. Must be 0-29", program)));
+        }
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+
+        match device {
+            DeviceConnection::PreampMk2 { connection, .. } => {
+                connection.send_program_change(program)?;
+                println!("[Preamp MK II] Sent Program Change {} to recall preset {}", program, program);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Preamp MK II".to_string())),
+        }
+    }
+
+    /// Recall a preset by sending all parameters to the Preamp MK II
+    pub fn recall_preamp_mk2_preset(
+        &mut self,
+        device_name: &str,
+        state: &PreampMk2State,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        
+        match device {
+            DeviceConnection::PreampMk2 { connection, state: device_state } => {
+                // Get all CC values from the preset state
+                let temp_preamp = PreampMk2 {
+                    state: state.clone(),
+                    midi_channel: connection.midi_channel,
+                };
+                let cc_map = temp_preamp.state_as_cc_map();
+                
+                println!("[Preamp MK II] Recalling preset: sending {} CC messages", cc_map.len());
+                
+                // Send all CC messages with throttling
+                for (cc_number, value) in cc_map.iter() {
+                    connection.send_cc(*cc_number, *value)?;
+                    println!("[Preamp MK II] Sent CC#{}: {}", cc_number, value);
+                    thread::sleep(Duration::from_millis(20));
+                }
+                
+                println!("[Preamp MK II] Preset recall complete");
+                
+                // Update device state
+                *device_state = temp_preamp;
+                
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Preamp MK II".to_string())),
+        }
+    }
+    
+    /// Save current state to a preset slot (0-29) using CC 27
+    pub fn save_preamp_mk2_preset(
+        &mut self,
+        device_name: &str,
+        slot: u8,
+    ) -> MidiResult<()> {
+        // Validate slot (0-29 for 30 presets)
+        if slot > 29 {
+            return Err(MidiError::Other(format!("Invalid preset slot: {}. Must be 0-29", slot)));
+        }
+        
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        
+        match device {
+            DeviceConnection::PreampMk2 { connection, .. } => {
+                // Send CC 27 with slot number (0-29)
+                connection.send_cc(CC_PRESET_SAVE, slot)?;
+                println!("[Preamp MK II] Saved current state to preset slot {}", slot);
+                
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Preamp MK II".to_string())),
+        }
+    }
+    
+    /// Get the current state of a Preamp MK II
+    pub fn get_preamp_mk2_state(&self, device_name: &str) -> MidiResult<PreampMk2State> {
+        let device = self.connections.get(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        
+        match device {
+            DeviceConnection::PreampMk2 { state, .. } => Ok(state.state.clone()),
+            _ => Err(MidiError::Other("Device is not a Preamp MK II".to_string())),
+        }
+    }
+    
     /// List all connected devices
     pub fn connected_devices(&self) -> Vec<ConnectedDevice> {
         self.connections.iter().map(|(name, device)| {
@@ -707,6 +905,9 @@ impl MidiManager {
                 }
                 DeviceConnection::ChromaConsole { connection, .. } => {
                     (PedalType::ChromaConsole, connection.midi_channel)
+                }
+                DeviceConnection::PreampMk2 { connection, .. } => {
+                    (PedalType::PreampMk2, connection.midi_channel)
                 }
             };
             

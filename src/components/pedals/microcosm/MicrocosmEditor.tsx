@@ -21,7 +21,7 @@ import { useMicrocosmEditor } from '../../../hooks/pedals/microcosm/useMicrocosm
 import { Knob, Toggle, TapButton, GridSelector, PedalUtilityCard, UtilityDivider, PresetManagementCard } from '../../common';
 import { ParameterCard } from '../../common/ParameterCard';
 import { EffectSelector } from './EffectSelector';
-import { PresetManager, SaveToLibraryDialog } from '../../presets';
+import { PresetDrawer, SaveToLibraryDialog } from '../../presets';
 import type { SubdivisionValue, PlaybackDirection, LooperRouting } from '../../../lib/midi/pedals/microcosm';
 
 interface MicrocosmEditorProps {
@@ -656,7 +656,7 @@ export function MicrocosmEditor({ deviceName }: MicrocosmEditorProps) {
       </div>
 
       {/* Preset Manager */}
-      <PresetManager
+      <PresetDrawer
         isOpen={managerOpen}
         onClose={() => setManagerOpen(false)}
         deviceName={deviceName}

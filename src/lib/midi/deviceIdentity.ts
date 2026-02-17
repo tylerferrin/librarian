@@ -216,6 +216,10 @@ function detectFromName(deviceName: string): PedalType | null {
     return 'GenLossMkii';
   }
   
+  if (lowerName.includes('preamp') && (lowerName.includes('mk') || lowerName.includes('mkii') || lowerName.includes('mk2'))) {
+    return 'PreampMk2';
+  }
+  
   return null;
 }
 

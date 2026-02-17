@@ -17,7 +17,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useChromaConsoleEditor } from '../../../hooks/pedals/chroma_console/useChromaConsoleEditor';
 import { Knob, Toggle, TapButton, VerticalSelector, PedalUtilityCard, UtilityDivider, PresetManagementCard } from '../../common';
-import { PresetManager, SaveToLibraryDialog } from '../../presets';
+import { PresetDrawer, SaveToLibraryDialog } from '../../presets';
 import {
   CHARACTER_MODULES,
   MOVEMENT_MODULES,
@@ -605,7 +605,7 @@ export function ChromaConsoleEditor({ deviceName }: ChromaConsoleEditorProps) {
       </div>
 
       {/* Preset Manager */}
-      <PresetManager
+      <PresetDrawer
         isOpen={managerOpen}
         onClose={() => setManagerOpen(false)}
         deviceName={deviceName}

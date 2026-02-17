@@ -5,6 +5,7 @@ use crate::midi::{SharedMidiManager, ConnectedDevice, PedalType, request_device_
 use crate::midi::pedals::microcosm::{MicrocosmParameter, MicrocosmState};
 use crate::midi::pedals::gen_loss_mkii::{GenLossMkiiParameter, GenLossMkiiState};
 use crate::midi::pedals::chroma_console::{ChromaConsoleParameter, ChromaConsoleState};
+use crate::midi::pedals::preamp_mk2::{PreampMk2Parameter, PreampMk2State};
 use crate::presets::{self, SharedPresetLibrary, Preset, PresetId, PresetFilter, BankSlot, PresetWithBanks, MidiSaveCapability};
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -25,6 +26,7 @@ impl From<ConnectedDevice> for DeviceInfo {
                 PedalType::Microcosm => "Microcosm".to_string(),
                 PedalType::GenLossMkii => "GenLossMkii".to_string(),
                 PedalType::ChromaConsole => "ChromaConsole".to_string(),
+                PedalType::PreampMk2 => "PreampMk2".to_string(),
             },
             midi_channel: device.midi_channel,
         }
@@ -255,6 +257,18 @@ pub async fn send_chroma_console_program_change(
         .map_err(|e| e.to_string())
 }
 
+/// Send a Program Change to recall a Preamp MK II preset (PC 0-29)
+#[tauri::command]
+pub async fn send_preamp_mk2_program_change(
+    manager: State<'_, SharedMidiManager>,
+    device_name: String,
+    program: u8,
+) -> Result<(), String> {
+    let mut manager = manager.lock().map_err(|e| e.to_string())?;
+    manager.send_preamp_mk2_program_change(&device_name, program)
+        .map_err(|e| e.to_string())
+}
+
 /// Get current Chroma Console state
 #[tauri::command]
 pub async fn get_chroma_console_state(
@@ -275,6 +289,67 @@ pub async fn recall_chroma_console_preset(
 ) -> Result<(), String> {
     let mut manager = manager.lock().map_err(|e| e.to_string())?;
     manager.recall_chroma_console_preset(&device_name, &state)
+        .map_err(|e| e.to_string())
+}
+
+// ===== Chase Bliss Preamp MK II Commands =====
+
+/// Connect to a Preamp MK II pedal
+#[tauri::command]
+pub async fn connect_preamp_mk2(
+    manager: State<'_, SharedMidiManager>,
+    device_name: String,
+    midi_channel: u8,
+) -> Result<(), String> {
+    let mut manager = manager.lock().map_err(|e| e.to_string())?;
+    manager.connect_preamp_mk2(&device_name, midi_channel)
+        .map_err(|e| e.to_string())
+}
+
+/// Send a parameter change to a Preamp MK II
+#[tauri::command]
+pub async fn send_preamp_mk2_parameter(
+    manager: State<'_, SharedMidiManager>,
+    device_name: String,
+    param: PreampMk2Parameter,
+) -> Result<(), String> {
+    let mut manager = manager.lock().map_err(|e| e.to_string())?;
+    manager.send_preamp_mk2_parameter(&device_name, param)
+        .map_err(|e| e.to_string())
+}
+
+/// Get the current state of a Preamp MK II
+#[tauri::command]
+pub async fn get_preamp_mk2_state(
+    manager: State<'_, SharedMidiManager>,
+    device_name: String,
+) -> Result<PreampMk2State, String> {
+    let manager = manager.lock().map_err(|e| e.to_string())?;
+    manager.get_preamp_mk2_state(&device_name)
+        .map_err(|e| e.to_string())
+}
+
+/// Recall a Preamp MK II preset (send all parameters)
+#[tauri::command]
+pub async fn recall_preamp_mk2_preset(
+    manager: State<'_, SharedMidiManager>,
+    device_name: String,
+    state: PreampMk2State,
+) -> Result<(), String> {
+    let mut manager = manager.lock().map_err(|e| e.to_string())?;
+    manager.recall_preamp_mk2_preset(&device_name, &state)
+        .map_err(|e| e.to_string())
+}
+
+/// Save current state to a Preamp MK II preset slot (0-29)
+#[tauri::command]
+pub async fn save_preamp_mk2_preset(
+    manager: State<'_, SharedMidiManager>,
+    device_name: String,
+    slot: u8,
+) -> Result<(), String> {
+    let mut manager = manager.lock().map_err(|e| e.to_string())?;
+    manager.save_preamp_mk2_preset(&device_name, slot)
         .map_err(|e| e.to_string())
 }
 
@@ -470,7 +545,7 @@ pub async fn save_preset_to_bank(
     
     match preset.pedal_type.as_str() {
         "Microcosm" => {
-            let state: MicrocosmState = serde_json::from_value(preset.parameters.clone())
+            let _state: MicrocosmState = serde_json::from_value(preset.parameters.clone())
                 .map_err(|e| format!("Failed to deserialize preset: {}", e))?;
             
             let midi_program = bank_number - 1;
@@ -531,6 +606,24 @@ pub async fn save_preset_to_bank(
             }
             
             // No MIDI save command - user must manually save
+        }
+        "PreampMk2" => {
+            use crate::midi::pedals::preamp_mk2::PreampMk2State;
+            let state: PreampMk2State = serde_json::from_value(preset.parameters.clone())
+                .map_err(|e| format!("Failed to deserialize preset: {}", e))?;
+            {
+                let mut manager = midi_manager.lock().map_err(|e| e.to_string())?;
+                manager.recall_preamp_mk2_preset(&device_name, &state)
+                    .map_err(|e| e.to_string())?;
+            }
+            // Give the pedal time to apply recalled CC values before issuing save CC.
+            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+            // Preamp uses CC 27 with value 0-29 to save to slot
+            {
+                let mut manager = midi_manager.lock().map_err(|e| e.to_string())?;
+                manager.save_preamp_mk2_preset(&device_name, bank_number)
+                    .map_err(|e| e.to_string())?;
+            }
         }
         _ => {
             return Err(format!("Unsupported pedal type: {}", preset.pedal_type));

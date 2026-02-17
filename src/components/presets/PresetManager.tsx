@@ -17,6 +17,8 @@ interface PresetManagerProps {
   pedalType: string;
   currentState: MicrocosmState | any;
   activePresetId?: string | null;
+  /** Initial drawer state: 'banks' (pedal-bank first) or 'library' */
+  defaultView?: 'library' | 'banks';
   onLoadPreset?: (state: MicrocosmState, presetId?: string, presetName?: string, skipMidiSend?: boolean) => Promise<void>;
   onPresetSaved?: (presetId: string, presetName: string) => void;
   onPresetCleared?: () => void;
@@ -29,6 +31,7 @@ export function PresetManager({
   pedalType,
   currentState,
   activePresetId,
+  defaultView = 'banks',
   onLoadPreset,
   onPresetSaved,
   onPresetCleared,
@@ -100,6 +103,14 @@ export function PresetManager({
     }
   }, [isOpen]);
 
+  // Optionally open Library first when explicitly requested
+  useEffect(() => {
+    if (isOpen && defaultView === 'library') {
+      setIsLibraryOpen(true);
+      setLibraryTargetSlot(null);
+    }
+  }, [isOpen, defaultView]);
+
   const loadBanks = async () => {
     if (!bankConfig) return;
     
@@ -132,7 +143,7 @@ export function PresetManager({
             const slotLetter = String.fromCharCode(65 + slotIndex);
             label = `Bank ${bankLabel}${slotLetter}`;
           } else {
-            label = `Bank ${bankLabel}-${slotIndex + 1}`;
+            label = `Bank ${bankLabel}-${slotIndex}`;
           }
           
           emptyBanks.push({
@@ -271,30 +282,33 @@ export function PresetManager({
       setLoadingPresetId(preset.id);
       const state = preset.parameters as any; // Type varies by pedal type
       
-      if (bankNumber !== undefined) {
+      if (bankNumber !== undefined && pedalType !== 'PreampMk2') {
         // Loading from pedal-bank: Send ONLY program change to bank slot
         // The pedal will recall all settings including effect type from its internal storage
         console.log(`[PresetManager] Loading from pedal bank slot ${bankNumber} (sending only PC)`);
         
-        // Dynamically select the correct API based on pedal type
         if (pedalType === 'ChromaConsole') {
           const { sendChromaConsoleProgramChange } = await import('@/lib/midi/pedals/chroma_console/api');
-          // Chroma Console: PC 0-79 maps directly to banks A-D (0-79)
           await sendChromaConsoleProgramChange(deviceName, bankNumber);
         } else if (pedalType === 'Microcosm') {
           const { sendMicrocosmProgramChange } = await import('@/lib/midi/pedals/microcosm/api');
-          // Microcosm: Banks are stored as 45-60 but MIDI PC is 0-indexed, so subtract 1
-          console.log(`[PresetManager] Microcosm: UI bank ${bankNumber} → MIDI PC ${bankNumber - 1}`);
           await sendMicrocosmProgramChange(deviceName, bankNumber - 1);
         } else {
           throw new Error(`Unsupported pedal type for program change: ${pedalType}`);
         }
         
-        // Update the UI to reflect the preset that was recalled on the pedal
-        // Pass skipMidiSend=true since we already sent the PC to the pedal
         if (onLoadPreset) {
-          console.log('[PresetManager] Updating UI state to match pedal (skip MIDI send)');
           await onLoadPreset(state, preset.id, preset.name, true);
+        }
+      } else if (bankNumber !== undefined && pedalType === 'PreampMk2') {
+        // Loading from pedal-bank for Preamp MK2:
+        // Per the manual: "Presets 0-29 are recalled using Program Changes 0-29"
+        // Send PC to recall from pedal's internal memory, then update app UI.
+        console.log(`[PresetManager] Preamp MK2 bank load: sending PC ${bankNumber} to recall preset`);
+        const { sendPreampMk2ProgramChange } = await import('@/lib/midi/pedals/preamp_mk2/api');
+        await sendPreampMk2ProgramChange(deviceName, bankNumber);
+        if (onLoadPreset) {
+          await onLoadPreset(state, preset.id, preset.name, true); // skipMidiSend=true, PC handled recall
         }
       } else {
         // Loading from app library: Send all parameters via CCs
@@ -302,12 +316,14 @@ export function PresetManager({
         if (onLoadPreset) {
           await onLoadPreset(state, preset.id, preset.name, false);
         } else {
-          // Fallback for direct loading (should rarely happen)
           if (pedalType === 'ChromaConsole') {
             const { recallChromaConsolePreset } = await import('@/lib/midi/pedals/chroma_console/api');
             await recallChromaConsolePreset(deviceName, state);
           } else if (pedalType === 'Microcosm') {
             await recallMicrocosmPreset(deviceName, state);
+          } else if (pedalType === 'PreampMk2') {
+            const { recallPreampMk2Preset } = await import('@/lib/midi/pedals/preamp_mk2/api');
+            await recallPreampMk2Preset(deviceName, state);
           } else {
             throw new Error(`Unsupported pedal type for recall: ${pedalType}`);
           }
@@ -459,11 +475,16 @@ export function PresetManager({
                         bankSlots.map((slot) => {
                         // Extract slot letter/number from bank label (e.g., "Bank 1A" -> "A", "Bank A-5" -> "5")
                         const slotLabel = slot.bankLabel.split(/[-\s]/).pop() || '';
+                        const isActive = slot.preset && activePresetId === slot.preset.id;
 
                         return (
                           <div
                             key={slot.bankNumber}
-                            className="flex items-center gap-3 p-3 bg-card-bg rounded-lg border border-border-light shadow-sm"
+                            className={`flex items-center gap-3 p-3 rounded-lg shadow-sm border transition-colors ${
+                              isActive
+                                ? 'bg-accent-blue/10 border-accent-blue/40'
+                                : 'bg-card-bg border-border-light'
+                            }`}
                           >
                             {/* Slot Label */}
                             <div className="flex items-center justify-center w-8 h-8 rounded-md bg-card-header border border-border-light">

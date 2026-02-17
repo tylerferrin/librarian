@@ -58,8 +58,11 @@ function DeviceItem({ deviceName, isConnecting, onConnect }: DeviceItemProps) {
     }
   }, [rememberDevice, selectedPedalType, deviceName]);
 
+  // Preamp MKII defaults to MIDI channel 2 per the manual
+  const midiChannel = selectedPedalType === 'PreampMk2' ? 2 : 1;
+
   const handleConnect = () => {
-    onConnect(deviceName, 1, selectedPedalType as PedalType);
+    onConnect(deviceName, midiChannel, selectedPedalType as PedalType);
   };
 
   return (
@@ -69,7 +72,7 @@ function DeviceItem({ deviceName, isConnecting, onConnect }: DeviceItemProps) {
           <div className="text-2xl">{selectedPedal?.icon || '🎹'}</div>
           <div className="flex-1">
             <p className="font-medium text-text-primary">{deviceName}</p>
-            <p className="text-sm text-text-secondary">MIDI Channel 1</p>
+            <p className="text-sm text-text-secondary">MIDI Channel {midiChannel}</p>
           </div>
         </div>
 
