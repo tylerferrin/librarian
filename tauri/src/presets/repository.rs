@@ -177,32 +177,30 @@ impl PresetRepository {
         let mut query = String::from(
             "SELECT id, name, pedal_type, description, parameters, tags, is_favorite, created_at, updated_at FROM presets WHERE 1=1"
         );
-        
-        let mut conditions = Vec::new();
-        
+
+        let mut params: Vec<rusqlite::types::Value> = Vec::new();
+
         if let Some(ref pedal_type) = filter.pedal_type {
-            conditions.push(format!(" AND pedal_type = '{}'", pedal_type));
+            query.push_str(" AND pedal_type = ?");
+            params.push(pedal_type.clone().into());
         }
-        
+
         if let Some(is_favorite) = filter.is_favorite {
-            conditions.push(format!(" AND is_favorite = {}", if is_favorite { 1 } else { 0 }));
+            query.push_str(" AND is_favorite = ?");
+            params.push((if is_favorite { 1i64 } else { 0i64 }).into());
         }
-        
+
         if let Some(ref search) = filter.search_query {
-            conditions.push(format!(
-                " AND (name LIKE '%{}%' OR description LIKE '%{}%')",
-                search, search
-            ));
+            query.push_str(" AND (name LIKE ? OR description LIKE ?)");
+            let pattern = format!("%{}%", search);
+            params.push(pattern.clone().into());
+            params.push(pattern.into());
         }
-        
-        for condition in conditions {
-            query.push_str(&condition);
-        }
-        
+
         query.push_str(" ORDER BY updated_at DESC");
-        
+
         let mut stmt = conn.prepare(&query)?;
-        let preset_iter = stmt.query_map([], |row| {
+        let preset_iter = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
             let tags_json: String = row.get(5)?;
             let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
             

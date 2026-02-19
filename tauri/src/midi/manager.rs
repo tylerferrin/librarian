@@ -544,7 +544,7 @@ impl MidiManager {
                 for (cc_number, value) in cc_map.iter() {
                     connection.send_cc(*cc_number, *value)?;
                     println!("[Microcosm] Sent CC#{}: {}", cc_number, value);
-                    thread::sleep(Duration::from_millis(20)); // Increased delay for reliability
+                    tokio::task::block_in_place(|| thread::sleep(Duration::from_millis(20)));
                 }
                 
                 println!("[Microcosm] Preset recall complete");
@@ -582,7 +582,7 @@ impl MidiManager {
                 for (cc_number, value) in cc_map.iter() {
                     connection.send_cc(*cc_number, *value)?;
                     println!("[Gen Loss MKII] Sent CC#{}: {}", cc_number, value);
-                    thread::sleep(Duration::from_millis(20)); // Increased delay for reliability
+                    tokio::task::block_in_place(|| thread::sleep(Duration::from_millis(20)));
                 }
                 
                 println!("[Gen Loss MKII] Preset recall complete");
@@ -684,7 +684,7 @@ impl MidiManager {
                 for (cc_number, value) in cc_map.iter() {
                     connection.send_cc(*cc_number, *value)?;
                     println!("[Chroma Console] Sent CC#{}: {}", cc_number, value);
-                    thread::sleep(Duration::from_millis(20)); // Increased delay for reliability
+                    tokio::task::block_in_place(|| thread::sleep(Duration::from_millis(20)));
                 }
                 
                 println!("[Chroma Console] Preset recall complete");
@@ -849,7 +849,7 @@ impl MidiManager {
                 for (cc_number, value) in cc_map.iter() {
                     connection.send_cc(*cc_number, *value)?;
                     println!("[Preamp MK II] Sent CC#{}: {}", cc_number, value);
-                    thread::sleep(Duration::from_millis(20));
+                    tokio::task::block_in_place(|| thread::sleep(Duration::from_millis(20)));
                 }
                 
                 println!("[Preamp MK II] Preset recall complete");
@@ -1032,7 +1032,7 @@ impl MidiManager {
 
                 for (cc_number, cc_value) in cc_pairs {
                     connection.send_cc(cc_number, cc_value)?;
-                    std::thread::sleep(std::time::Duration::from_millis(20));
+                    tokio::task::block_in_place(|| thread::sleep(Duration::from_millis(20)));
                 }
 
                 device_state.state = state.clone();
