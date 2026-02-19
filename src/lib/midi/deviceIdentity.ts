@@ -219,7 +219,11 @@ function detectFromName(deviceName: string): PedalType | null {
   if (lowerName.includes('preamp') && (lowerName.includes('mk') || lowerName.includes('mkii') || lowerName.includes('mk2'))) {
     return 'PreampMk2';
   }
-  
+
+  if (lowerName.includes('cxm') || lowerName.includes('1978')) {
+    return 'Cxm1978';
+  }
+
   return null;
 }
 

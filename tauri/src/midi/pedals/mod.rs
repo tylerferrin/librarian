@@ -4,11 +4,13 @@ pub mod microcosm;
 pub mod gen_loss_mkii;
 pub mod chroma_console;
 pub mod preamp_mk2;
+pub mod cxm1978;
 
 pub use microcosm::Microcosm;
 pub use gen_loss_mkii::GenLossMkii;
 pub use chroma_console::ChromaConsole;
 pub use preamp_mk2::PreampMk2;
+pub use cxm1978::Cxm1978;
 
 use std::collections::HashMap;
 
@@ -73,5 +75,9 @@ mod tests {
         let chroma = ChromaConsole::new(1);
         let _metadata = chroma.metadata();
         let _supports_pc = chroma.supports_program_change();
+
+        let cxm = Cxm1978::new(2);
+        let _metadata = cxm.metadata();
+        let _supports_pc = cxm.supports_program_change();
     }
 }

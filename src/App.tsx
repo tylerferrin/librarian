@@ -6,6 +6,7 @@ import { MainLayout } from './components/MainLayout';
 import { MicrocosmEditor } from './components/pedals/microcosm';
 import { ChromaConsoleEditor } from './components/pedals/chroma_console';
 import { PreampMk2Editor } from './components/pedals/preamp_mk2';
+import { Cxm1978Editor } from './components/pedals/cxm1978';
 import { DeviceMismatchWarning } from './components/DeviceMismatchWarning';
 import { pedalRegistry } from './lib/midi/pedalRegistry';
 import { detectDeviceMismatch } from './lib/midi/deviceMismatchDetection';
@@ -16,6 +17,7 @@ import './lib/midi/pedals/microcosm';
 import './lib/midi/pedals/gen-loss-mkii';
 import './lib/midi/pedals/chroma_console';
 import './lib/midi/pedals/preamp_mk2';
+import './lib/midi/pedals/cxm1978';
 
 // Expose MIDI for console testing (dev only)
 import * as midi from './lib/midi/pedals/microcosm';
@@ -109,6 +111,8 @@ function App() {
         return <ChromaConsoleEditor deviceName={connectedDevice.name} />;
       case 'PreampMk2':
         return <PreampMk2Editor deviceName={connectedDevice.name} />;
+      case 'Cxm1978':
+        return <Cxm1978Editor deviceName={connectedDevice.name} />;
       case 'GenLossMkii':
         return <ComingSoonEditor pedalType={activePedalType} />;
       default:

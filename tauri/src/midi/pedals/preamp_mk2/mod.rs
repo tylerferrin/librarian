@@ -3,6 +3,7 @@
 
 mod types;
 mod mapper;
+pub mod commands;
 
 // Re-export public types
 pub use types::*;

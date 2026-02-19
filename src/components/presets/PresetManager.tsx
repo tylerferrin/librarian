@@ -4,7 +4,6 @@ import { createPortal } from 'react-dom';
 import { X, Save, Play, Trash2, AlertCircle, Library, AlertTriangle } from 'lucide-react';
 import { getBankState, savePreset, savePresetToBank, deletePreset, clearBank } from '@/lib/presets';
 import type { BankSlot, Preset, BankConfig } from '@/lib/presets/types';
-import type { MicrocosmState } from '@/lib/midi/pedals/microcosm/types';
 import { recallMicrocosmPreset } from '@/lib/midi/pedals/microcosm/api';
 import { pedalRegistry } from '@/lib/midi/pedalRegistry';
 import { ConfirmModal } from './ConfirmModal';
@@ -15,11 +14,11 @@ interface PresetManagerProps {
   onClose: () => void;
   deviceName: string;
   pedalType: string;
-  currentState: MicrocosmState | any;
+  currentState: any;
   activePresetId?: string | null;
   /** Initial drawer state: 'banks' (pedal-bank first) or 'library' */
   defaultView?: 'library' | 'banks';
-  onLoadPreset?: (state: MicrocosmState, presetId?: string, presetName?: string, skipMidiSend?: boolean) => Promise<void>;
+  onLoadPreset?: (state: any, presetId?: string, presetName?: string, skipMidiSend?: boolean) => Promise<void>;
   onPresetSaved?: (presetId: string, presetName: string) => void;
   onPresetCleared?: () => void;
 }
@@ -189,7 +188,7 @@ export function PresetManager({
   };
 
   const handleLibraryLoadToEditor = async (
-    state: MicrocosmState,
+    state: any,
     presetId: string,
     presetName: string,
   ) => {

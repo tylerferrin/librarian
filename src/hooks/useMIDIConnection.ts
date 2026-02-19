@@ -4,6 +4,7 @@ import { connectMicrocosm } from '../lib/midi/pedals/microcosm';
 import { connectGenLossMkii } from '../lib/midi/pedals/gen-loss-mkii';
 import { connectChromaConsole } from '../lib/midi/pedals/chroma_console';
 import { connectPreampMk2 } from '../lib/midi/pedals/preamp_mk2';
+import { connectCxm1978 } from '../lib/midi/pedals/cxm1978';
 import type { DeviceInfo, PedalType } from '../lib/midi';
 
 export function useMIDIConnection() {
@@ -33,7 +34,7 @@ export function useMIDIConnection() {
     setError(null);
 
     try {
-      const targetChannel = pedalType === 'PreampMk2' ? 2 : channel;
+      const targetChannel = (pedalType === 'PreampMk2' || pedalType === 'Cxm1978') ? 2 : channel;
 
       // Call the appropriate connect function based on pedal type
       switch (pedalType) {
@@ -48,6 +49,9 @@ export function useMIDIConnection() {
           break;
         case 'PreampMk2':
           await connectPreampMk2(deviceName, targetChannel);
+          break;
+        case 'Cxm1978':
+          await connectCxm1978(deviceName, targetChannel);
           break;
         default:
           throw new Error(`Unknown pedal type: ${pedalType}`);

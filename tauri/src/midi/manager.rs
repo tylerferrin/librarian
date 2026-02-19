@@ -2,11 +2,12 @@
 // Handles device connections, message sending, and state management
 
 use crate::midi::error::{MidiError, MidiResult};
-use crate::midi::pedals::{Microcosm, GenLossMkii, ChromaConsole, PreampMk2};
+use crate::midi::pedals::{Microcosm, GenLossMkii, ChromaConsole, PreampMk2, Cxm1978};
 use crate::midi::pedals::microcosm::{MicrocosmParameter, MicrocosmState};
 use crate::midi::pedals::gen_loss_mkii::{GenLossMkiiParameter, GenLossMkiiState};
 use crate::midi::pedals::chroma_console::{ChromaConsoleParameter, ChromaConsoleState};
-use crate::midi::pedals::preamp_mk2::{PreampMk2Parameter, PreampMk2State, CC_PRESET_SAVE};
+use crate::midi::pedals::preamp_mk2::{PreampMk2Parameter, PreampMk2State, CC_PRESET_SAVE as PREAMP_CC_PRESET_SAVE};
+use crate::midi::pedals::cxm1978::{Cxm1978Parameter, Cxm1978State, CC_PRESET_SAVE as CXM_CC_PRESET_SAVE};
 use serde::{Serialize, Deserialize};
 use tauri::Emitter;
 
@@ -33,6 +34,7 @@ pub enum PedalType {
     GenLossMkii,
     ChromaConsole,
     PreampMk2,
+    Cxm1978,
 }
 
 /// Information about a connected device
@@ -98,6 +100,10 @@ enum DeviceConnection {
     PreampMk2 {
         connection: MidiConnection,
         state: PreampMk2,
+    },
+    Cxm1978 {
+        connection: MidiConnection,
+        state: Cxm1978,
     },
 }
 
@@ -176,6 +182,7 @@ impl MidiManager {
                 PedalType::GenLossMkii => "GenLossMkii".to_string(),
                 PedalType::ChromaConsole => "ChromaConsole".to_string(),
                 PedalType::PreampMk2 => "PreampMk2".to_string(),
+                PedalType::Cxm1978 => "Cxm1978".to_string(),
             };
             let app_handle = self.app_handle.as_ref().unwrap().clone();
             
@@ -873,7 +880,7 @@ impl MidiManager {
         match device {
             DeviceConnection::PreampMk2 { connection, .. } => {
                 // Send CC 27 with slot number (0-29)
-                connection.send_cc(CC_PRESET_SAVE, slot)?;
+                connection.send_cc(PREAMP_CC_PRESET_SAVE, slot)?;
                 println!("[Preamp MK II] Saved current state to preset slot {}", slot);
                 
                 Ok(())
@@ -893,6 +900,183 @@ impl MidiManager {
         }
     }
     
+    // ========================================================================
+    // Chase Bliss / Meris CXM 1978 Methods
+    // ========================================================================
+
+    /// Connect to a Chase Bliss / Meris CXM 1978
+    pub fn connect_cxm1978(
+        &mut self,
+        device_name: &str,
+        midi_channel: u8,
+    ) -> MidiResult<()> {
+        if midi_channel < 1 || midi_channel > 16 {
+            return Err(MidiError::InvalidChannel(midi_channel));
+        }
+
+        if self.connections.contains_key(device_name) {
+            return Err(MidiError::AlreadyConnected(device_name.to_string()));
+        }
+
+        let midi_out = self.midi_output.take()
+            .ok_or_else(|| MidiError::Other("MIDI output not initialized".to_string()))?;
+
+        let port_opt = {
+            let ports = midi_out.ports();
+            ports.into_iter()
+                .find(|p| {
+                    midi_out.port_name(p)
+                        .map(|name| name.to_lowercase().contains(&device_name.to_lowercase()))
+                        .unwrap_or(false)
+                })
+        };
+
+        let port = port_opt.ok_or_else(|| MidiError::DeviceNotFound(device_name.to_string()))?;
+
+        let output = midi_out
+            .connect(&port, "Librarian")
+            .map_err(|e| MidiError::ConnectionFailed(e.to_string()))?;
+
+        let input = self.setup_midi_input(device_name, PedalType::Cxm1978, midi_channel)?;
+
+        let connection = MidiConnection {
+            output,
+            input,
+            midi_channel,
+        };
+
+        let state = Cxm1978::new(midi_channel);
+
+        self.connections.insert(
+            device_name.to_string(),
+            DeviceConnection::Cxm1978 { connection, state },
+        );
+
+        println!("✅ Connected to CXM 1978: '{}' on MIDI Channel {}", device_name, midi_channel);
+
+        self.midi_output = Some(MidiOutput::new("Librarian Output")
+            .map_err(|e| MidiError::Other(e.to_string()))?);
+
+        Ok(())
+    }
+
+    /// Send a parameter change to a CXM 1978
+    pub fn send_cxm1978_parameter(
+        &mut self,
+        device_name: &str,
+        param: Cxm1978Parameter,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+
+        match device {
+            DeviceConnection::Cxm1978 { connection, state } => {
+                let cc_number = param.cc_number();
+                let cc_value = param.cc_value();
+
+                #[cfg(debug_assertions)]
+                println!("[CXM 1978] Sending CC#{} = {} (ch {})", cc_number, cc_value, connection.midi_channel);
+
+                connection.send_cc(cc_number, cc_value)?;
+                state.update_state(&param);
+
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a CXM 1978".to_string())),
+        }
+    }
+
+    /// Send a Program Change to recall a CXM 1978 preset (PC 0-29)
+    pub fn send_cxm1978_program_change(
+        &mut self,
+        device_name: &str,
+        program: u8,
+    ) -> MidiResult<()> {
+        if program > 29 {
+            return Err(MidiError::Other(format!("Invalid preset slot: {}. Must be 0-29", program)));
+        }
+
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+
+        match device {
+            DeviceConnection::Cxm1978 { connection, .. } => {
+                connection.send_program_change(program)?;
+                println!("[CXM 1978] Sent Program Change {} to recall preset {}", program, program);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a CXM 1978".to_string())),
+        }
+    }
+
+    /// Recall a CXM 1978 preset by sending all parameters
+    pub fn recall_cxm1978_preset(
+        &mut self,
+        device_name: &str,
+        state: &Cxm1978State,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+
+        match device {
+            DeviceConnection::Cxm1978 { connection, state: device_state } => {
+                let temp_cxm = Cxm1978 {
+                    state: state.clone(),
+                    midi_channel: connection.midi_channel,
+                };
+                let cc_map = temp_cxm.state_as_cc_map();
+
+                // Sort by CC number for deterministic order
+                let mut cc_pairs: Vec<(u8, u8)> = cc_map.into_iter().collect();
+                cc_pairs.sort_by_key(|(cc, _)| *cc);
+
+                for (cc_number, cc_value) in cc_pairs {
+                    connection.send_cc(cc_number, cc_value)?;
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+
+                device_state.state = state.clone();
+                println!("[CXM 1978] Recalled preset state for '{}'", device_name);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a CXM 1978".to_string())),
+        }
+    }
+
+    /// Save current state to a CXM 1978 preset slot (0-29)
+    pub fn save_cxm1978_preset(
+        &mut self,
+        device_name: &str,
+        slot: u8,
+    ) -> MidiResult<()> {
+        if slot > 29 {
+            return Err(MidiError::Other(format!("Invalid preset slot: {}. Must be 0-29", slot)));
+        }
+
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+
+        match device {
+            DeviceConnection::Cxm1978 { connection, .. } => {
+                connection.send_cc(CXM_CC_PRESET_SAVE, slot)?;
+                println!("[CXM 1978] Saved current state to preset slot {}", slot);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a CXM 1978".to_string())),
+        }
+    }
+
+    /// Get the current state of a CXM 1978
+    pub fn get_cxm1978_state(&self, device_name: &str) -> MidiResult<Cxm1978State> {
+        let device = self.connections.get(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+
+        match device {
+            DeviceConnection::Cxm1978 { state, .. } => Ok(state.state.clone()),
+            _ => Err(MidiError::Other("Device is not a CXM 1978".to_string())),
+        }
+    }
+
     /// List all connected devices
     pub fn connected_devices(&self) -> Vec<ConnectedDevice> {
         self.connections.iter().map(|(name, device)| {
@@ -908,6 +1092,9 @@ impl MidiManager {
                 }
                 DeviceConnection::PreampMk2 { connection, .. } => {
                     (PedalType::PreampMk2, connection.midi_channel)
+                }
+                DeviceConnection::Cxm1978 { connection, .. } => {
+                    (PedalType::Cxm1978, connection.midi_channel)
                 }
             };
             

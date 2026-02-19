@@ -10,16 +10,14 @@
  * - Banks: Bank grid (for pedals with bankConfig)
  */
 import { PresetManager } from './PresetManager';
-import type { MicrocosmState } from '@/lib/midi/pedals/microcosm/types';
-
 interface PresetDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   deviceName: string;
   pedalType: string;
-  currentState: MicrocosmState | unknown;
+  currentState: any;
   activePresetId?: string | null;
-  onLoadPreset?: (state: MicrocosmState, presetId?: string, presetName?: string, skipMidiSend?: boolean) => Promise<void>;
+  onLoadPreset?: (state: any, presetId?: string, presetName?: string, skipMidiSend?: boolean) => Promise<void>;
   onPresetSaved?: (presetId: string, presetName: string) => void;
   onPresetCleared?: () => void;
 }

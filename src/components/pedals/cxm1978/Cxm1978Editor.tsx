@@ -1,7 +1,7 @@
-// Chase Bliss Preamp MK II Editor Component - Pedal-style UI
+// Chase Bliss / Meris CXM 1978 Automatone Editor Component
 
 import { useState } from 'react';
-import { usePreampMk2Editor } from '@/hooks/pedals/preamp_mk2/usePreampMk2Editor';
+import { useCxm1978Editor } from '@/hooks/pedals/cxm1978/useCxm1978Editor';
 import { VerticalSlider } from '@/components/common/VerticalSlider';
 import { VerticalSelector } from '@/components/common/VerticalSelector';
 import { Toggle } from '@/components/common/Toggle';
@@ -10,28 +10,28 @@ import { PresetManagementCard } from '@/components/common/PresetManagementCard';
 import { SaveToLibraryDialog } from '@/components/presets/SaveToLibraryDialog';
 import { PresetDrawer } from '@/components/presets/PresetDrawer';
 import { Save, Library, RotateCcw } from 'lucide-react';
-import type { PreampMk2State, Jump, MidsPosition, QResonance, DiodeClipping, FuzzMode } from '@/lib/midi/pedals/preamp_mk2';
+import type { Cxm1978State, Jump, ReverbType, Diffusion, TankMod, Clock } from '@/lib/midi/pedals/cxm1978';
 
-interface PreampMk2EditorProps {
+interface Cxm1978EditorProps {
   deviceName: string;
 }
 
-export function PreampMk2Editor({ deviceName }: PreampMk2EditorProps) {
+export function Cxm1978Editor({ deviceName }: Cxm1978EditorProps) {
   const {
     state,
     isLoading,
     error,
-    setVolume,
-    setTreble,
-    setMids,
-    setFrequency,
     setBass,
-    setGain,
+    setMids,
+    setCross,
+    setTreble,
+    setMix,
+    setPreDly,
     setJump,
-    setMidsPosition,
-    setQResonance,
-    setDiodeClipping,
-    setFuzzMode,
+    setReverbType,
+    setDiffusion,
+    setTankMod,
+    setClock,
     setBypass,
     loadPreset,
     activePreset,
@@ -39,7 +39,7 @@ export function PreampMk2Editor({ deviceName }: PreampMk2EditorProps) {
     resetToPreset,
     resetToPedalDefault,
     clearActivePreset,
-  } = usePreampMk2Editor(deviceName);
+  } = useCxm1978Editor(deviceName);
 
   const [libraryDialogOpen, setLibraryDialogOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
@@ -48,7 +48,7 @@ export function PreampMk2Editor({ deviceName }: PreampMk2EditorProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-lg">Loading Preamp MK II...</div>
+        <div className="text-lg">Loading CXM 1978...</div>
       </div>
     );
   }
@@ -81,7 +81,7 @@ export function PreampMk2Editor({ deviceName }: PreampMk2EditorProps) {
       setUpdating(true);
       const { updatePreset, savePresetToBank, getBankState } = await import('@/lib/presets');
       await updatePreset({ id: activePreset.id, parameters: state });
-      const bankState = await getBankState('PreampMk2');
+      const bankState = await getBankState('Cxm1978');
       const assignedBanks = bankState.filter((slot) => slot.preset?.id === activePreset.id);
       for (const bank of assignedBanks) {
         await savePresetToBank(deviceName, activePreset.id, bank.bankNumber);
@@ -92,7 +92,12 @@ export function PreampMk2Editor({ deviceName }: PreampMk2EditorProps) {
     }
   };
 
-  const handleLoadPreset = async (presetState: PreampMk2State, presetId?: string, presetName?: string, skipMidiSend?: boolean) => {
+  const handleLoadPreset = async (
+    presetState: Cxm1978State,
+    presetId?: string,
+    presetName?: string,
+    skipMidiSend?: boolean,
+  ) => {
     loadPreset(presetState, presetId, presetName, skipMidiSend);
     setManagerOpen(false);
   };
@@ -104,41 +109,41 @@ export function PreampMk2Editor({ deviceName }: PreampMk2EditorProps) {
     { value: 'Five', label: '5' },
   ];
 
-  // Mids Position options
-  const midsPositionOptions = [
-    { value: 'Off', label: 'OFF' },
-    { value: 'Pre', label: 'PRE' },
-    { value: 'Post', label: 'POST' },
+  // Reverb Type options
+  const reverbTypeOptions = [
+    { value: 'Room', label: 'ROOM' },
+    { value: 'Plate', label: 'PLATE' },
+    { value: 'Hall', label: 'HALL' },
   ];
 
-  // Q Resonance options
-  const qResonanceOptions = [
+  // Diffusion options
+  const diffusionOptions = [
     { value: 'Low', label: 'LOW' },
-    { value: 'Mid', label: 'MID' },
+    { value: 'Med', label: 'MED' },
     { value: 'High', label: 'HIGH' },
   ];
 
-  // Diode Clipping options
-  const diodeClippingOptions = [
-    { value: 'Off', label: 'OFF' },
-    { value: 'Silicon', label: 'SIL' },
-    { value: 'Germanium', label: 'GERM' },
+  // Tank Mod options
+  const tankModOptions = [
+    { value: 'Low', label: 'LOW' },
+    { value: 'Med', label: 'MED' },
+    { value: 'High', label: 'HIGH' },
   ];
 
-  // Fuzz Mode options
-  const fuzzModeOptions = [
-    { value: 'Off', label: 'OFF' },
-    { value: 'Open', label: 'OPEN' },
-    { value: 'Gated', label: 'GATED' },
+  // Clock options
+  const clockOptions = [
+    { value: 'HiFi', label: 'HIFI' },
+    { value: 'Standard', label: 'STD' },
+    { value: 'LoFi', label: 'LOFI' },
   ];
 
-  // Slider track color (grey)
+  // Slider track color (blue-grey for reverb)
   const sliderColor = '#6b7280';
-  // Arcade button option colors: off = grey, first option = blue, second option = red
-  const selectorOptionColors = ['#6b7280', '#3b82f6', '#b91c1c'];
+  // Arcade button option colors: first = grey, second = blue, third = deep blue
+  const selectorOptionColors = ['#6b7280', '#3b82f6', '#1d4ed8'];
 
   return (
-    <div className="h-full overflow-y-auto bg-gradient-to-br from-gray-900 to-gray-800">
+    <div className="h-full overflow-y-auto bg-gradient-to-br from-gray-900 to-slate-800">
       {/* Fixed Preset Manager Button */}
       <button
         onClick={() => setManagerOpen(true)}
@@ -152,7 +157,7 @@ export function PreampMk2Editor({ deviceName }: PreampMk2EditorProps) {
       <div className="max-w-4xl mx-auto p-4 space-y-4">
         {/* Header */}
         <div className="text-center mb-4">
-          <h1 className="text-xl font-bold text-white mb-1">Chase Bliss Preamp MK II</h1>
+          <h1 className="text-xl font-bold text-white mb-1">Chase Bliss / Meris CXM 1978</h1>
           {activePreset && (
             <div className="text-sm">
               <span className="text-gray-400">Active: </span>
@@ -234,12 +239,12 @@ export function PreampMk2Editor({ deviceName }: PreampMk2EditorProps) {
 
         {/* Pedal-Style Interface */}
         <div className="relative">
-          {/* Pedal Body - styled like the actual hardware */}
-          <div 
+          {/* Pedal Body — styled like the actual hardware */}
+          <div
             className="relative rounded-xl p-6 shadow-xl border-4"
             style={{
-              background: 'linear-gradient(135deg, #f5f5f0 0%, #e8e8dd 100%)',
-              borderColor: '#c4a574',
+              background: 'linear-gradient(135deg, #f0f4f8 0%, #dce6ef 100%)',
+              borderColor: '#a8bfcf',
             }}
           >
             {/* Wood grain effect on sides */}
@@ -250,16 +255,9 @@ export function PreampMk2Editor({ deviceName }: PreampMk2EditorProps) {
             <div className="mb-6">
               <div className="flex justify-center items-end gap-8">
                 <VerticalSlider
-                  label="VOLUME"
-                  value={state.volume}
-                  onChange={setVolume}
-                  height={280}
-                  color={sliderColor}
-                />
-                <VerticalSlider
-                  label="TREBLE"
-                  value={state.treble}
-                  onChange={setTreble}
+                  label="BASS"
+                  value={state.bass}
+                  onChange={setBass}
                   height={280}
                   color={sliderColor}
                 />
@@ -271,23 +269,30 @@ export function PreampMk2Editor({ deviceName }: PreampMk2EditorProps) {
                   color={sliderColor}
                 />
                 <VerticalSlider
-                  label="FREQ"
-                  value={state.frequency}
-                  onChange={setFrequency}
+                  label="CROSS"
+                  value={state.cross}
+                  onChange={setCross}
                   height={280}
                   color={sliderColor}
                 />
                 <VerticalSlider
-                  label="BASS"
-                  value={state.bass}
-                  onChange={setBass}
+                  label="TREBLE"
+                  value={state.treble}
+                  onChange={setTreble}
                   height={280}
                   color={sliderColor}
                 />
                 <VerticalSlider
-                  label="GAIN"
-                  value={state.gain}
-                  onChange={setGain}
+                  label="MIX"
+                  value={state.mix}
+                  onChange={setMix}
+                  height={280}
+                  color={sliderColor}
+                />
+                <VerticalSlider
+                  label="PRE-DLY"
+                  value={state.pre_dly}
+                  onChange={setPreDly}
                   height={280}
                   color={sliderColor}
                 />
@@ -295,7 +300,7 @@ export function PreampMk2Editor({ deviceName }: PreampMk2EditorProps) {
             </div>
 
             {/* Divider Line */}
-            <div className="w-full h-px bg-gray-500/60 mb-5" />
+            <div className="w-full h-px bg-slate-400/60 mb-5" />
 
             {/* Arcade Buttons Section */}
             <div className="flex justify-center items-start gap-5">
@@ -307,42 +312,42 @@ export function PreampMk2Editor({ deviceName }: PreampMk2EditorProps) {
                 optionColors={selectorOptionColors}
               />
               <VerticalSelector
-                label="MIDS"
-                value={state.mids_position}
-                options={midsPositionOptions}
-                onChange={(value) => setMidsPosition(value as MidsPosition)}
+                label="TYPE"
+                value={state.reverb_type}
+                options={reverbTypeOptions}
+                onChange={(value) => setReverbType(value as ReverbType)}
                 optionColors={selectorOptionColors}
               />
               <VerticalSelector
-                label="Q"
-                value={state.q_resonance}
-                options={qResonanceOptions}
-                onChange={(value) => setQResonance(value as QResonance)}
+                label="DIFF"
+                value={state.diffusion}
+                options={diffusionOptions}
+                onChange={(value) => setDiffusion(value as Diffusion)}
                 optionColors={selectorOptionColors}
               />
               <VerticalSelector
-                label="DIODE"
-                value={state.diode_clipping}
-                options={diodeClippingOptions}
-                onChange={(value) => setDiodeClipping(value as DiodeClipping)}
+                label="MOD"
+                value={state.tank_mod}
+                options={tankModOptions}
+                onChange={(value) => setTankMod(value as TankMod)}
                 optionColors={selectorOptionColors}
               />
               <VerticalSelector
-                label="FUZZ"
-                value={state.fuzz_mode}
-                options={fuzzModeOptions}
-                onChange={(value) => setFuzzMode(value as FuzzMode)}
+                label="CLOCK"
+                value={state.clock}
+                options={clockOptions}
+                onChange={(value) => setClock(value as Clock)}
                 optionColors={selectorOptionColors}
               />
             </div>
 
             {/* Chase Bliss Logo Area */}
             <div className="mt-5 text-center">
-              <div className="text-lg font-bold text-gray-700 tracking-widest">
+              <div className="text-lg font-bold text-slate-700 tracking-widest">
                 CHASE BLISS AUDIO
               </div>
-              <div className="text-xs text-gray-500 font-semibold tracking-wide">
-                AUTOMATONE PREAMP MKII
+              <div className="text-xs text-slate-500 font-semibold tracking-wide">
+                AUTOMATONE CXM 1978
               </div>
             </div>
           </div>
@@ -353,23 +358,24 @@ export function PreampMk2Editor({ deviceName }: PreampMk2EditorProps) {
           <h3 className="text-base font-semibold text-white mb-2">Control Reference</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-300">
             <div>
-              <h4 className="font-semibold text-purple-400 mb-2">Faders</h4>
+              <h4 className="font-semibold text-blue-400 mb-2">Faders</h4>
               <ul className="space-y-1 text-xs">
-                <li><strong>Volume:</strong> Master output level</li>
-                <li><strong>Treble/Bass:</strong> High/Low frequency tone</li>
-                <li><strong>Mids:</strong> Parametric boost/cut (±18dB)</li>
-                <li><strong>Freq:</strong> Mids center frequency (150Hz-4kHz)</li>
-                <li><strong>Gain:</strong> Input drive/overdrive</li>
+                <li><strong>Bass:</strong> Bass frequency decay time</li>
+                <li><strong>Mids:</strong> Mids frequency decay time</li>
+                <li><strong>Cross:</strong> Crossover frequency (bass/mids split)</li>
+                <li><strong>Treble:</strong> High frequency output level</li>
+                <li><strong>Mix:</strong> Wet/dry blend (0=dry, 127=wet)</li>
+                <li><strong>Pre-Dly:</strong> Pre-delay time before reverb tail</li>
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold text-purple-400 mb-2">Arcade Buttons</h4>
+              <h4 className="font-semibold text-blue-400 mb-2">Arcade Buttons</h4>
               <ul className="space-y-1 text-xs">
                 <li><strong>Jump:</strong> Quick preset navigation</li>
-                <li><strong>Mids:</strong> Pre/Post preamp position</li>
-                <li><strong>Q:</strong> Parametric mids width</li>
-                <li><strong>Diode:</strong> Clipping type selection</li>
-                <li><strong>Fuzz:</strong> Silicon fuzz mode</li>
+                <li><strong>Type:</strong> Room / Plate / Hall algorithm</li>
+                <li><strong>Diff:</strong> Early reflection density</li>
+                <li><strong>Mod:</strong> Tank modulation depth</li>
+                <li><strong>Clock:</strong> HiFi / Standard / LoFi quality</li>
               </ul>
             </div>
           </div>
@@ -380,17 +386,17 @@ export function PreampMk2Editor({ deviceName }: PreampMk2EditorProps) {
       <SaveToLibraryDialog
         isOpen={libraryDialogOpen}
         onClose={() => setLibraryDialogOpen(false)}
-        pedalType="PreampMk2"
+        pedalType="Cxm1978"
         currentState={state}
         onSaved={handleLibrarySaved}
       />
 
-      {/* Preset Drawer - universal UI, opens with Library first */}
+      {/* Preset Drawer */}
       <PresetDrawer
         isOpen={managerOpen}
         onClose={() => setManagerOpen(false)}
         deviceName={deviceName}
-        pedalType="PreampMk2"
+        pedalType="Cxm1978"
         currentState={state}
         activePresetId={activePreset?.id}
         onLoadPreset={handleLoadPreset}
