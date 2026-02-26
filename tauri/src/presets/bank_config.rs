@@ -78,7 +78,7 @@ impl BankConfig {
             let slot_letter = char::from(b'A' + slot_idx as u8);
             Some(format!("{}{}", bank_label, slot_letter))
         } else {
-            Some(format!("{}-{}", bank_label, slot_idx))
+            Some(format!("{}-{}", bank_label, slot_idx + 1))
         }
     }
     
@@ -155,6 +155,102 @@ pub fn get_bank_config(pedal_type: &str) -> Option<BankConfig> {
                 description: "CC 27 with value 0-29 saves to that preset slot".to_string(),
             },
         }),
+        "GenLossMkii" => Some(BankConfig {
+            program_change_start: 1,
+            program_change_end: 122,
+            num_banks: 1,
+            slots_per_bank: 122,
+            bank_labels: vec!["Preset".to_string()],
+            bank_colors: vec!["amber".to_string()],
+            midi_save: MidiSaveCapability::Supported {
+                cc_number: 111,
+                description: "CC 111 with value 1-122 saves to that preset slot".to_string(),
+            },
+        }),
+        "Clean" => Some(BankConfig {
+            program_change_start: 1,
+            program_change_end: 122,
+            num_banks: 1,
+            slots_per_bank: 122,
+            bank_labels: vec!["Preset".to_string()],
+            bank_colors: vec!["blue".to_string()],
+            midi_save: MidiSaveCapability::Supported {
+                cc_number: 111,
+                description: "CC 111 with value 1-122 saves to that preset slot".to_string(),
+            },
+        }),
+        "Onward" => Some(BankConfig {
+            program_change_start: 1,
+            program_change_end: 122,
+            num_banks: 1,
+            slots_per_bank: 122,
+            bank_labels: vec!["Preset".to_string()],
+            bank_colors: vec!["green".to_string()],
+            midi_save: MidiSaveCapability::Supported {
+                cc_number: 111,
+                description: "CC 111 with value 1-122 saves to that preset slot".to_string(),
+            },
+        }),
+        "BrothersAm" => Some(BankConfig {
+            program_change_start: 1,
+            program_change_end: 122,
+            num_banks: 1,
+            slots_per_bank: 122,
+            bank_labels: vec!["Preset".to_string()],
+            bank_colors: vec!["orange".to_string()],
+            midi_save: MidiSaveCapability::Supported {
+                cc_number: 111,
+                description: "CC 111 with value 1-122 saves to that preset slot".to_string(),
+            },
+        }),
+        "ReverseModeC" => Some(BankConfig {
+            program_change_start: 1,
+            program_change_end: 122,
+            num_banks: 1,
+            slots_per_bank: 122,
+            bank_labels: vec!["Preset".to_string()],
+            bank_colors: vec!["purple".to_string()],
+            midi_save: MidiSaveCapability::Supported {
+                cc_number: 111,
+                description: "CC 111 with value 1-122 saves to that preset slot".to_string(),
+            },
+        }),
+        "MoodMkii" => Some(BankConfig {
+            program_change_start: 1,
+            program_change_end: 122,
+            num_banks: 1,
+            slots_per_bank: 122,
+            bank_labels: vec!["Preset".to_string()],
+            bank_colors: vec!["teal".to_string()],
+            midi_save: MidiSaveCapability::Supported {
+                cc_number: 111,
+                description: "CC 111 with value 1-122 saves to that preset slot".to_string(),
+            },
+        }),
+        "BillyStringsWombtone" => Some(BankConfig {
+            program_change_start: 1,
+            program_change_end: 122,
+            num_banks: 1,
+            slots_per_bank: 122,
+            bank_labels: vec!["Preset".to_string()],
+            bank_colors: vec!["yellow".to_string()],
+            midi_save: MidiSaveCapability::Supported {
+                cc_number: 111,
+                description: "CC 111 with value 1-122 saves to that preset slot".to_string(),
+            },
+        }),
+        "Lossy" => Some(BankConfig {
+            program_change_start: 1,
+            program_change_end: 122,
+            num_banks: 1,
+            slots_per_bank: 122,
+            bank_labels: vec!["Preset".to_string()],
+            bank_colors: vec!["red".to_string()],
+            midi_save: MidiSaveCapability::Supported {
+                cc_number: 111,
+                description: "CC 111 with value 1-122 saves to that preset slot".to_string(),
+            },
+        }),
         _ => None,
     }
 }
@@ -209,7 +305,7 @@ mod tests {
     #[test]
     fn all_pedals_have_save_capability_defined() {
         // Ensure every pedal type has a complete bank config with save capability
-        let pedals = ["Microcosm", "ChromaConsole"];
+        let pedals = ["Microcosm", "ChromaConsole", "GenLossMkii"];
         
         for pedal in pedals {
             let config = get_bank_config(pedal)

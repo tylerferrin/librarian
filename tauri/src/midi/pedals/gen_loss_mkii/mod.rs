@@ -7,6 +7,7 @@ pub mod commands;
 
 // Re-export public types
 pub use types::*;
+pub use mapper::CC_PRESET_SAVE;
 
 /// Chase Bliss Generation Loss MKII pedal with complete MIDI control
 /// This is the aggregate root for the GenLossMkii domain.
@@ -87,8 +88,8 @@ impl super::PedalCapabilities for GenLossMkii {
         super::PedalMetadata {
             name: "GenLossMkii",
             manufacturer: "Chase Bliss Audio",
-            supports_editor: false, // No editor implemented yet
-            supports_preset_library: false, // No preset library yet
+            supports_editor: true,
+            supports_preset_library: true,
         }
     }
 

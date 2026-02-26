@@ -7,6 +7,14 @@ use crate::midi::pedals::microcosm::MicrocosmParameter;
 use crate::midi::pedals::microcosm::MicrocosmState;
 use crate::midi::pedals::chroma_console::ChromaConsoleState;
 use crate::midi::pedals::preamp_mk2::PreampMk2State;
+use crate::midi::pedals::gen_loss_mkii::GenLossMkiiState;
+use crate::midi::pedals::brothers_am::BrothersAmState;
+use crate::midi::pedals::reverse_mode_c::ReverseModeCState;
+use crate::midi::pedals::mood_mkii::MoodMkiiState;
+use crate::midi::pedals::billy_strings_wombtone::BillyStringsWombtoneState;
+use crate::midi::pedals::lossy::LossyState;
+use crate::midi::pedals::clean::CleanState;
+use crate::midi::pedals::onward::OnwardState;
 use crate::presets::{self, SharedPresetLibrary, Preset, PresetId, PresetFilter, BankSlot, PresetWithBanks, MidiSaveCapability};
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -18,6 +26,13 @@ pub use crate::midi::pedals::gen_loss_mkii::commands::*;
 pub use crate::midi::pedals::chroma_console::commands::*;
 pub use crate::midi::pedals::preamp_mk2::commands::*;
 pub use crate::midi::pedals::cxm1978::commands::*;
+pub use crate::midi::pedals::brothers_am::commands::*;
+pub use crate::midi::pedals::reverse_mode_c::commands::*;
+pub use crate::midi::pedals::mood_mkii::commands::*;
+pub use crate::midi::pedals::billy_strings_wombtone::commands::*;
+pub use crate::midi::pedals::lossy::commands::*;
+pub use crate::midi::pedals::clean::commands::*;
+pub use crate::midi::pedals::onward::commands::*;
 
 // ===== Shared Device Commands =====
 
@@ -39,6 +54,13 @@ impl From<ConnectedDevice> for DeviceInfo {
                 PedalType::ChromaConsole => "ChromaConsole".to_string(),
                 PedalType::PreampMk2 => "PreampMk2".to_string(),
                 PedalType::Cxm1978 => "Cxm1978".to_string(),
+                PedalType::MoodMkii => "MoodMkii".to_string(),
+                PedalType::BillyStringsWombtone => "BillyStringsWombtone".to_string(),
+                PedalType::Lossy => "Lossy".to_string(),
+                PedalType::BrothersAm => "BrothersAm".to_string(),
+                PedalType::ReverseModeC => "ReverseModeC".to_string(),
+                PedalType::Clean => "Clean".to_string(),
+                PedalType::Onward => "Onward".to_string(),
             },
             midi_channel: device.midi_channel,
         }
@@ -135,6 +157,21 @@ pub async fn is_device_connected(
 ) -> Result<bool, String> {
     let manager = manager.lock().map_err(|e| e.to_string())?;
     Ok(manager.is_connected(&device_name))
+}
+
+/// Send a Program Change on a specific channel to a device (no persistent connection).
+/// Used to trigger MIDI channel reassignment on pedals that accept the first received
+/// PC to set their new channel.
+#[tauri::command]
+pub async fn assign_channel_pc(
+    manager: State<'_, SharedMidiManager>,
+    device_name: String,
+    channel: u8,
+) -> Result<(), String> {
+    let manager = manager.lock().map_err(|e| e.to_string())?;
+    manager
+        .send_channel_assignment_pc(&device_name, channel)
+        .map_err(|e| e.to_string())
 }
 
 // ===== Preset Management Commands =====
@@ -420,6 +457,95 @@ pub async fn save_preset_to_bank(
                     .save_preamp_mk2_preset(&device_name, bank_number)
                     .map_err(|e| e.to_string())?;
             }
+        }
+        "GenLossMkii" => {
+            let state: GenLossMkiiState =
+                serde_json::from_value(preset.parameters.clone())
+                    .map_err(|e| format!("Failed to deserialize preset: {}", e))?;
+            {
+                let mut manager = midi_manager.lock().map_err(|e| e.to_string())?;
+                manager
+                    .recall_gen_loss_preset(&device_name, &state)
+                    .map_err(|e| e.to_string())?;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+            {
+                let mut manager = midi_manager.lock().map_err(|e| e.to_string())?;
+                manager
+                    .save_gen_loss_preset(&device_name, bank_number)
+                    .map_err(|e| e.to_string())?;
+            }
+            // Navigate to the saved slot so the pedal's indicator confirms the preset is active
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            {
+                let mut manager = midi_manager.lock().map_err(|e| e.to_string())?;
+                manager
+                    .send_gen_loss_program_change(&device_name, bank_number)
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        "BrothersAm" => {
+            let state: BrothersAmState = serde_json::from_value(preset.parameters.clone())
+                .map_err(|e| format!("Failed to deserialize preset: {}", e))?;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.recall_brothers_am_preset(&device_name, &state).map_err(|e| e.to_string())?; }
+            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.save_brothers_am_preset(&device_name, bank_number).map_err(|e| e.to_string())?; }
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.send_brothers_am_program_change(&device_name, bank_number).map_err(|e| e.to_string())?; }
+        }
+        "ReverseModeC" => {
+            let state: ReverseModeCState = serde_json::from_value(preset.parameters.clone())
+                .map_err(|e| format!("Failed to deserialize preset: {}", e))?;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.recall_reverse_mode_c_preset(&device_name, &state).map_err(|e| e.to_string())?; }
+            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.save_reverse_mode_c_preset(&device_name, bank_number).map_err(|e| e.to_string())?; }
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.send_reverse_mode_c_program_change(&device_name, bank_number).map_err(|e| e.to_string())?; }
+        }
+        "MoodMkii" => {
+            let state: MoodMkiiState = serde_json::from_value(preset.parameters.clone())
+                .map_err(|e| format!("Failed to deserialize preset: {}", e))?;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.recall_mood_mkii_preset(&device_name, &state).map_err(|e| e.to_string())?; }
+            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.save_mood_mkii_preset(&device_name, bank_number).map_err(|e| e.to_string())?; }
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.send_mood_mkii_program_change(&device_name, bank_number).map_err(|e| e.to_string())?; }
+        }
+        "BillyStringsWombtone" => {
+            let state: BillyStringsWombtoneState = serde_json::from_value(preset.parameters.clone())
+                .map_err(|e| format!("Failed to deserialize preset: {}", e))?;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.recall_billy_strings_wombtone_preset(&device_name, &state).map_err(|e| e.to_string())?; }
+            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.save_billy_strings_wombtone_preset(&device_name, bank_number).map_err(|e| e.to_string())?; }
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.send_billy_strings_wombtone_program_change(&device_name, bank_number).map_err(|e| e.to_string())?; }
+        }
+        "Lossy" => {
+            let state: LossyState = serde_json::from_value(preset.parameters.clone())
+                .map_err(|e| format!("Failed to deserialize preset: {}", e))?;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.recall_lossy_preset(&device_name, &state).map_err(|e| e.to_string())?; }
+            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.save_lossy_preset(&device_name, bank_number).map_err(|e| e.to_string())?; }
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.send_lossy_program_change(&device_name, bank_number).map_err(|e| e.to_string())?; }
+        }
+        "Clean" => {
+            let state: CleanState = serde_json::from_value(preset.parameters.clone())
+                .map_err(|e| format!("Failed to deserialize preset: {}", e))?;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.recall_clean_preset(&device_name, &state).map_err(|e| e.to_string())?; }
+            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.save_clean_preset(&device_name, bank_number).map_err(|e| e.to_string())?; }
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.send_clean_program_change(&device_name, bank_number).map_err(|e| e.to_string())?; }
+        }
+        "Onward" => {
+            let state: OnwardState = serde_json::from_value(preset.parameters.clone())
+                .map_err(|e| format!("Failed to deserialize preset: {}", e))?;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.recall_onward_preset(&device_name, &state).map_err(|e| e.to_string())?; }
+            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.save_onward_preset(&device_name, bank_number).map_err(|e| e.to_string())?; }
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            { let mut manager = midi_manager.lock().map_err(|e| e.to_string())?; manager.send_onward_program_change(&device_name, bank_number).map_err(|e| e.to_string())?; }
         }
         _ => {
             return Err(format!("Unsupported pedal type: {}", preset.pedal_type));

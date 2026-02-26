@@ -9,6 +9,7 @@ export const cxm1978Definition: PedalDefinition = {
   icon: '🌊',
   color: '#3b82f6', // Blue — reverb
   hasEditor: true,
+  defaultMidiChannel: 2,
   bankConfig: {
     programChangeStart: 0,
     programChangeEnd: 29,

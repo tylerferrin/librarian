@@ -47,6 +47,7 @@ export function Knob({
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
+      e.preventDefault();
       isDragging.current = true;
       dragStartY.current = e.clientY;
       dragStartValue.current = value;

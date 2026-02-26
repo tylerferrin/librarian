@@ -5,6 +5,8 @@ use super::types::{
 };
 use std::collections::HashMap;
 
+pub const CC_PRESET_SAVE: u8 = 111;
+
 impl GenLossMkiiParameter {
     /// Get the CC number for this parameter
     pub fn cc_number(&self) -> u8 {

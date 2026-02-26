@@ -5,6 +5,13 @@ import { connectGenLossMkii } from '../lib/midi/pedals/gen-loss-mkii';
 import { connectChromaConsole } from '../lib/midi/pedals/chroma_console';
 import { connectPreampMk2 } from '../lib/midi/pedals/preamp_mk2';
 import { connectCxm1978 } from '../lib/midi/pedals/cxm1978';
+import { connectClean } from '../lib/midi/pedals/clean';
+import { connectOnward } from '../lib/midi/pedals/onward';
+import { connectBrothersAm } from '../lib/midi/pedals/brothers-am';
+import { connectReverseModeC } from '../lib/midi/pedals/reverse-mode-c';
+import { connectMoodMkii } from '../lib/midi/pedals/mood-mkii';
+import { connectBillyStringsWombtone } from '../lib/midi/pedals/billy-strings-wombtone';
+import { connectLossy } from '../lib/midi/pedals/lossy';
 import type { DeviceInfo, PedalType } from '../lib/midi';
 
 export function useMIDIConnection() {
@@ -34,24 +41,43 @@ export function useMIDIConnection() {
     setError(null);
 
     try {
-      const targetChannel = (pedalType === 'PreampMk2' || pedalType === 'Cxm1978') ? 2 : channel;
-
       // Call the appropriate connect function based on pedal type
       switch (pedalType) {
         case 'Microcosm':
-          await connectMicrocosm(deviceName, targetChannel);
+          await connectMicrocosm(deviceName, channel);
           break;
         case 'GenLossMkii':
-          await connectGenLossMkii(deviceName, targetChannel);
+          await connectGenLossMkii(deviceName, channel);
           break;
         case 'ChromaConsole':
-          await connectChromaConsole(deviceName, targetChannel);
+          await connectChromaConsole(deviceName, channel);
           break;
         case 'PreampMk2':
-          await connectPreampMk2(deviceName, targetChannel);
+          await connectPreampMk2(deviceName, channel);
           break;
         case 'Cxm1978':
-          await connectCxm1978(deviceName, targetChannel);
+          await connectCxm1978(deviceName, channel);
+          break;
+        case 'Clean':
+          await connectClean(deviceName, channel);
+          break;
+        case 'Onward':
+          await connectOnward(deviceName, channel);
+          break;
+        case 'BrothersAm':
+          await connectBrothersAm(deviceName, channel);
+          break;
+        case 'ReverseModeC':
+          await connectReverseModeC(deviceName, channel);
+          break;
+        case 'MoodMkii':
+          await connectMoodMkii(deviceName, channel);
+          break;
+        case 'BillyStringsWombtone':
+          await connectBillyStringsWombtone(deviceName, channel);
+          break;
+        case 'Lossy':
+          await connectLossy(deviceName, channel);
           break;
         default:
           throw new Error(`Unknown pedal type: ${pedalType}`);

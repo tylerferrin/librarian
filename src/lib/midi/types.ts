@@ -1,6 +1,6 @@
 // Common MIDI types shared across all pedals
 
-export type PedalType = 'Microcosm' | 'GenLossMkii' | 'ChromaConsole' | 'PreampMk2' | 'Cxm1978';
+export type PedalType = 'Microcosm' | 'GenLossMkii' | 'ChromaConsole' | 'PreampMk2' | 'Cxm1978' | 'Clean' | 'Onward' | 'BrothersAm' | 'ReverseModeC' | 'MoodMkii' | 'BillyStringsWombtone' | 'Lossy';
 
 export interface DeviceInfo {
   name: string;

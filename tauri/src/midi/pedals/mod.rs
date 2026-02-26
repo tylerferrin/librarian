@@ -5,12 +5,26 @@ pub mod gen_loss_mkii;
 pub mod chroma_console;
 pub mod preamp_mk2;
 pub mod cxm1978;
+pub mod mood_mkii;
+pub mod billy_strings_wombtone;
+pub mod lossy;
+pub mod brothers_am;
+pub mod reverse_mode_c;
+pub mod clean;
+pub mod onward;
 
 pub use microcosm::Microcosm;
 pub use gen_loss_mkii::GenLossMkii;
 pub use chroma_console::ChromaConsole;
 pub use preamp_mk2::PreampMk2;
 pub use cxm1978::Cxm1978;
+pub use mood_mkii::MoodMkii;
+pub use billy_strings_wombtone::BillyStringsWombtone;
+pub use lossy::Lossy;
+pub use brothers_am::BrothersAm;
+pub use reverse_mode_c::ReverseModeC;
+pub use clean::Clean;
+pub use onward::Onward;
 
 use std::collections::HashMap;
 
@@ -79,5 +93,25 @@ mod tests {
         let cxm = Cxm1978::new(2);
         let _metadata = cxm.metadata();
         let _supports_pc = cxm.supports_program_change();
+
+        let mood = MoodMkii::new(3);
+        let _metadata = mood.metadata();
+        let _supports_pc = mood.supports_program_change();
+
+        let bsw = BillyStringsWombtone::new(4);
+        let _metadata = bsw.metadata();
+        let _supports_pc = bsw.supports_program_change();
+
+        let lossy = Lossy::new(5);
+        let _metadata = lossy.metadata();
+        let _supports_pc = lossy.supports_program_change();
+
+        let brothers = BrothersAm::new(6);
+        let _metadata = brothers.metadata();
+        let _supports_pc = brothers.supports_program_change();
+
+        let rmc = ReverseModeC::new(7);
+        let _metadata = rmc.metadata();
+        let _supports_pc = rmc.supports_program_change();
     }
 }

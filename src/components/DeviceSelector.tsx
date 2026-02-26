@@ -3,7 +3,8 @@ import { pedalRegistry } from '@/lib/midi/pedalRegistry';
 import type { PedalType } from '@/lib/midi/types';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DeviceIdentityDebug } from './DeviceIdentityDebug';
-import { getPedalTypeForDevice, saveDeviceProfile, hasDeviceProfile } from '@/lib/midi/deviceProfiles';
+import { getPedalTypeForDevice, getMidiChannelForDevice, saveDeviceProfile, hasDeviceProfile } from '@/lib/midi/deviceProfiles';
+import { assignChannelPc } from '@/lib/midi/api';
 
 interface DeviceSelectorProps {
   devices: string[];
@@ -40,7 +41,8 @@ function DeviceItem({ deviceName, isConnecting, onConnect }: DeviceItemProps) {
   const availablePedals = pedalRegistry.getAll();
   const detectedType = detectPedalType(deviceName);
   const savedProfile = getPedalTypeForDevice(deviceName);
-  
+  const savedChannel = getMidiChannelForDevice(deviceName);
+
   // Priority: 1) Saved profile, 2) Name detection, 3) Default
   const [selectedPedalType, setSelectedPedalType] = useState<string>(
     savedProfile || detectedType || availablePedals[0]?.type || 'Microcosm'
@@ -48,21 +50,53 @@ function DeviceItem({ deviceName, isConnecting, onConnect }: DeviceItemProps) {
   const [showDropdown, setShowDropdown] = useState(!detectedType && !savedProfile);
   const [showIdentityDebug, setShowIdentityDebug] = useState(false);
   const [rememberDevice, setRememberDevice] = useState(hasDeviceProfile(deviceName));
-  
+  const [showChannelAssign, setShowChannelAssign] = useState(false);
+  const [isAssigning, setIsAssigning] = useState(false);
+  const [assignResult, setAssignResult] = useState<{ ok: boolean; message: string } | null>(null);
+
   const selectedPedal = pedalRegistry.get(selectedPedalType);
 
-  // Update remember device state when pedal type changes
+  // Channel priority: 1) Saved profile channel, 2) Pedal's default, 3) 1
+  const defaultChannel = selectedPedal?.defaultMidiChannel ?? 1;
+  const [selectedChannel, setSelectedChannel] = useState<number>(
+    savedChannel ?? defaultChannel
+  );
+
+  // When pedal type changes, reset channel to the pedal's default (unless user has a saved profile)
+  useEffect(() => {
+    if (!savedChannel) {
+      const pedal = pedalRegistry.get(selectedPedalType);
+      setSelectedChannel(pedal?.defaultMidiChannel ?? 1);
+    }
+  }, [selectedPedalType, savedChannel]);
+
+  // Persist profile when rememberDevice, pedal type, or channel changes
   useEffect(() => {
     if (rememberDevice && selectedPedalType) {
-      saveDeviceProfile(deviceName, selectedPedalType as PedalType);
+      saveDeviceProfile(deviceName, selectedPedalType as PedalType, selectedChannel);
     }
-  }, [rememberDevice, selectedPedalType, deviceName]);
+  }, [rememberDevice, selectedPedalType, selectedChannel, deviceName]);
 
-  // Preamp MKII defaults to MIDI channel 2 per the manual
-  const midiChannel = selectedPedalType === 'PreampMk2' ? 2 : 1;
+  // Reset assign result when channel changes
+  useEffect(() => {
+    setAssignResult(null);
+  }, [selectedChannel]);
 
   const handleConnect = () => {
-    onConnect(deviceName, midiChannel, selectedPedalType as PedalType);
+    onConnect(deviceName, selectedChannel, selectedPedalType as PedalType);
+  };
+
+  const handleAssignChannel = async () => {
+    setIsAssigning(true);
+    setAssignResult(null);
+    try {
+      await assignChannelPc(deviceName, selectedChannel);
+      setAssignResult({ ok: true, message: `PC sent on channel ${selectedChannel}. Pedal should now respond on channel ${selectedChannel}.` });
+    } catch (err) {
+      setAssignResult({ ok: false, message: String(err) });
+    } finally {
+      setIsAssigning(false);
+    }
   };
 
   return (
@@ -72,12 +106,12 @@ function DeviceItem({ deviceName, isConnecting, onConnect }: DeviceItemProps) {
           <div className="text-2xl">{selectedPedal?.icon || '🎹'}</div>
           <div className="flex-1">
             <p className="font-medium text-text-primary">{deviceName}</p>
-            <p className="text-sm text-text-secondary">MIDI Channel {midiChannel}</p>
           </div>
         </div>
 
-        {/* Pedal Type Selection */}
+        {/* Controls row */}
         <div className="flex items-center gap-3">
+          {/* Pedal Type Selection */}
           {showDropdown || !detectedType ? (
             <div className="flex flex-col gap-1">
               <label className="text-xs text-text-secondary">Pedal Type:</label>
@@ -108,6 +142,27 @@ function DeviceItem({ deviceName, isConnecting, onConnect }: DeviceItemProps) {
             </button>
           )}
 
+          {/* MIDI Channel selector */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-text-secondary">MIDI Channel:</label>
+            <Select
+              value={String(selectedChannel)}
+              onValueChange={(v) => setSelectedChannel(Number(v))}
+              disabled={isConnecting}
+            >
+              <SelectTrigger className="w-[80px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent style={{ backgroundColor: '#ffffff' }}>
+                {Array.from({ length: 16 }, (_, i) => i + 1).map((ch) => (
+                  <SelectItem key={ch} value={String(ch)}>
+                    {ch}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <button
             onClick={handleConnect}
             disabled={isConnecting}
@@ -118,7 +173,7 @@ function DeviceItem({ deviceName, isConnecting, onConnect }: DeviceItemProps) {
           </button>
         </div>
       </div>
-      
+
       {/* Auto-detection indicator */}
       {detectedType && !showDropdown && !savedProfile && (
         <div className="mt-2 text-xs text-success flex items-center gap-1">
@@ -153,11 +208,52 @@ function DeviceItem({ deviceName, isConnecting, onConnect }: DeviceItemProps) {
           </label>
           {rememberDevice && (
             <p className="text-xs text-text-muted mt-1 ml-5">
-              App will auto-select {selectedPedal?.name} for "{deviceName}"
+              App will auto-select {selectedPedal?.name} (ch {selectedChannel}) for "{deviceName}"
             </p>
           )}
         </div>
       )}
+
+      {/* Channel assignment section */}
+      <div className="mt-3 border-t border-border-light pt-3">
+        <button
+          onClick={() => { setShowChannelAssign(!showChannelAssign); setAssignResult(null); }}
+          className="flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary transition-colors"
+        >
+          <svg
+            className={`w-3 h-3 transition-transform ${showChannelAssign ? 'rotate-90' : ''}`}
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+          </svg>
+          Assign channel to pedal
+        </button>
+
+        {showChannelAssign && (
+          <div className="mt-2 p-3 rounded-md border border-border-default" style={{ backgroundColor: '#f9fafb' }}>
+            <p className="text-xs text-text-secondary mb-2">
+              Put the pedal in channel reassignment mode, then click below to send a Program
+              Change on channel {selectedChannel}. The pedal will switch to that channel.
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleAssignChannel}
+                disabled={isAssigning || isConnecting}
+                className="px-3 py-1.5 text-xs font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ backgroundColor: '#f59e0b', color: '#ffffff' }}
+              >
+                {isAssigning ? 'Sending...' : `Send PC on channel ${selectedChannel}`}
+              </button>
+            </div>
+            {assignResult && (
+              <p className={`mt-2 text-xs ${assignResult.ok ? 'text-accent-green' : 'text-accent-red'}`}>
+                {assignResult.ok ? '✓' : '✗'} {assignResult.message}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Device Identity Debug (DEV only) */}
       {import.meta.env.DEV && (

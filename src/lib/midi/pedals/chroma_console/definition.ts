@@ -9,6 +9,7 @@ export const chromaConsoleDefinition: PedalDefinition = {
   icon: '🎨',
   color: '#06b6d4',
   hasEditor: true,
+  defaultMidiChannel: 1,
   bankConfig: {
     programChangeStart: 0,
     programChangeEnd: 79,

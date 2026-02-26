@@ -54,3 +54,29 @@ pub async fn recall_gen_loss_preset(
         .recall_gen_loss_preset(&device_name, &state)
         .map_err(|e| e.to_string())
 }
+
+/// Save current state to a Gen Loss MKII preset slot (1-122)
+#[tauri::command]
+pub async fn save_gen_loss_preset(
+    manager: State<'_, SharedMidiManager>,
+    device_name: String,
+    slot: u8,
+) -> Result<(), String> {
+    let mut manager = manager.lock().map_err(|e| e.to_string())?;
+    manager
+        .save_gen_loss_preset(&device_name, slot)
+        .map_err(|e| e.to_string())
+}
+
+/// Send a program change to a Gen Loss MKII (navigate to preset slot 1-122)
+#[tauri::command]
+pub async fn send_gen_loss_program_change(
+    manager: State<'_, SharedMidiManager>,
+    device_name: String,
+    program: u8,
+) -> Result<(), String> {
+    let mut manager = manager.lock().map_err(|e| e.to_string())?;
+    manager
+        .send_gen_loss_program_change(&device_name, program)
+        .map_err(|e| e.to_string())
+}

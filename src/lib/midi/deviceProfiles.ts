@@ -11,6 +11,7 @@ import type { PedalType } from './types';
 interface DeviceProfile {
   interfaceName: string;
   pedalType: PedalType;
+  midiChannel?: number;
   nickname?: string;
   notes?: string;
   createdAt: string;
@@ -53,11 +54,21 @@ export function getPedalTypeForDevice(interfaceName: string): PedalType | null {
 }
 
 /**
+ * Get the saved MIDI channel for a device interface
+ */
+export function getMidiChannelForDevice(interfaceName: string): number | null {
+  const profiles = loadDeviceProfiles();
+  const profile = profiles.find(p => p.interfaceName === interfaceName);
+  return profile?.midiChannel ?? null;
+}
+
+/**
  * Save a device profile mapping
  */
 export function saveDeviceProfile(
   interfaceName: string,
   pedalType: PedalType,
+  midiChannel?: number,
   nickname?: string,
   notes?: string
 ): void {
@@ -70,13 +81,14 @@ export function saveDeviceProfile(
   filtered.push({
     interfaceName,
     pedalType,
+    midiChannel,
     nickname,
     notes,
     createdAt: new Date().toISOString(),
   });
   
   saveDeviceProfiles(filtered);
-  console.log(`✅ Saved device profile: ${interfaceName} → ${pedalType}`);
+  console.log(`✅ Saved device profile: ${interfaceName} → ${pedalType} (ch ${midiChannel ?? 'default'})`);
 }
 
 /**

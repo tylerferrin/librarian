@@ -9,6 +9,7 @@ export const preampMk2Definition: PedalDefinition = {
   icon: '🎚️',
   color: '#ef4444', // Chase Bliss red
   hasEditor: true,
+  defaultMidiChannel: 2,
   bankConfig: {
     programChangeStart: 0,
     programChangeEnd: 29,

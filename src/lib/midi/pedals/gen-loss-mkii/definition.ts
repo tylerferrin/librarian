@@ -7,6 +7,20 @@ export const genLossDefinition: PedalDefinition = {
   name: 'Generation Loss MKII',
   manufacturer: 'Chase Bliss Audio',
   icon: '📼',
-  color: '#3b82f6',
-  hasEditor: false, // Editor coming soon
+  color: '#d97706',
+  hasEditor: true,
+  defaultMidiChannel: 2,
+  bankConfig: {
+    programChangeStart: 1,
+    programChangeEnd: 122,
+    numBanks: 1,
+    slotsPerBank: 122,
+    bankLabels: ['Preset'],
+    bankColors: ['amber'],
+    midiSave: {
+      type: 'supported',
+      ccNumber: 111,
+      description: 'CC 111 - Preset Save (value 1-122 selects slot)',
+    },
+  },
 };

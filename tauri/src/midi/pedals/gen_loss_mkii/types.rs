@@ -254,9 +254,9 @@ impl TapeModel {
 /// Three-position dry mode (CC 22)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DryMode {
-    Dry1, // 1
-    Dry2, // 2
-    Dry3, // 3
+    Dry1, // NONE
+    Dry2, // SMALL
+    Dry3, // UNITY
 }
 
 impl DryMode {
@@ -284,9 +284,9 @@ impl DryMode {
 /// Three-position noise mode (CC 23)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NoiseMode {
-    Noise1, // 1
-    Noise2, // 2
-    Noise3, // 3
+    Noise1, // NONE
+    Noise2, // MILD
+    Noise3, // HEAVY
 }
 
 impl NoiseMode {
@@ -314,9 +314,9 @@ impl NoiseMode {
 /// Three-position aux mode (CC 21)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AuxMode {
-    Aux1, // 1
-    Aux2, // 2
-    Aux3, // 3
+    Aux1, // STOP
+    Aux2, // FILTER
+    Aux3, // FAIL
 }
 
 impl AuxMode {

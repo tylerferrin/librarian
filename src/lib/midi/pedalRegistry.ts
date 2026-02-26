@@ -10,6 +10,7 @@ export interface PedalDefinition {
   icon: string;
   color: string;
   hasEditor: boolean;
+  defaultMidiChannel?: number; // Default MIDI channel (1-16); defaults to 1 if not set
   bankConfig?: BankConfig; // Optional - only for pedals with preset banks
 }
 

@@ -2,12 +2,19 @@
 // Handles device connections, message sending, and state management
 
 use crate::midi::error::{MidiError, MidiResult};
-use crate::midi::pedals::{Microcosm, GenLossMkii, ChromaConsole, PreampMk2, Cxm1978};
+use crate::midi::pedals::{Microcosm, GenLossMkii, ChromaConsole, PreampMk2, Cxm1978, MoodMkii, BillyStringsWombtone, Lossy, BrothersAm, ReverseModeC, Clean, Onward};
 use crate::midi::pedals::microcosm::{MicrocosmParameter, MicrocosmState};
-use crate::midi::pedals::gen_loss_mkii::{GenLossMkiiParameter, GenLossMkiiState};
+use crate::midi::pedals::gen_loss_mkii::{GenLossMkiiParameter, GenLossMkiiState, CC_PRESET_SAVE as GEN_LOSS_CC_PRESET_SAVE};
 use crate::midi::pedals::chroma_console::{ChromaConsoleParameter, ChromaConsoleState};
 use crate::midi::pedals::preamp_mk2::{PreampMk2Parameter, PreampMk2State, CC_PRESET_SAVE as PREAMP_CC_PRESET_SAVE};
 use crate::midi::pedals::cxm1978::{Cxm1978Parameter, Cxm1978State, CC_PRESET_SAVE as CXM_CC_PRESET_SAVE};
+use crate::midi::pedals::mood_mkii::{MoodMkiiParameter, MoodMkiiState, CC_PRESET_SAVE as MOOD_CC_PRESET_SAVE};
+use crate::midi::pedals::billy_strings_wombtone::{BillyStringsWombtoneParameter, BillyStringsWombtoneState, CC_PRESET_SAVE as BSW_CC_PRESET_SAVE};
+use crate::midi::pedals::lossy::{LossyParameter, LossyState, CC_PRESET_SAVE as LOSSY_CC_PRESET_SAVE};
+use crate::midi::pedals::brothers_am::{BrothersAmParameter, BrothersAmState, CC_PRESET_SAVE as BROTHERS_AM_CC_PRESET_SAVE};
+use crate::midi::pedals::reverse_mode_c::{ReverseModeCParameter, ReverseModeCState, CC_PRESET_SAVE as REVERSE_MODE_C_CC_PRESET_SAVE};
+use crate::midi::pedals::clean::{CleanParameter, CleanState, CC_PRESET_SAVE as CLEAN_CC_PRESET_SAVE};
+use crate::midi::pedals::onward::{OnwardParameter, OnwardState, CC_PRESET_SAVE as ONWARD_CC_PRESET_SAVE};
 use serde::{Serialize, Deserialize};
 use tauri::Emitter;
 
@@ -35,6 +42,13 @@ pub enum PedalType {
     ChromaConsole,
     PreampMk2,
     Cxm1978,
+    MoodMkii,
+    BillyStringsWombtone,
+    Lossy,
+    BrothersAm,
+    ReverseModeC,
+    Clean,
+    Onward,
 }
 
 /// Information about a connected device
@@ -104,6 +118,34 @@ enum DeviceConnection {
     Cxm1978 {
         connection: MidiConnection,
         state: Cxm1978,
+    },
+    MoodMkii {
+        connection: MidiConnection,
+        state: MoodMkii,
+    },
+    BillyStringsWombtone {
+        connection: MidiConnection,
+        state: BillyStringsWombtone,
+    },
+    Lossy {
+        connection: MidiConnection,
+        state: Lossy,
+    },
+    BrothersAm {
+        connection: MidiConnection,
+        state: BrothersAm,
+    },
+    ReverseModeC {
+        connection: MidiConnection,
+        state: ReverseModeC,
+    },
+    Clean {
+        connection: MidiConnection,
+        state: Clean,
+    },
+    Onward {
+        connection: MidiConnection,
+        state: Onward,
     },
 }
 
@@ -183,6 +225,13 @@ impl MidiManager {
                 PedalType::ChromaConsole => "ChromaConsole".to_string(),
                 PedalType::PreampMk2 => "PreampMk2".to_string(),
                 PedalType::Cxm1978 => "Cxm1978".to_string(),
+                PedalType::MoodMkii => "MoodMkii".to_string(),
+                PedalType::BillyStringsWombtone => "BillyStringsWombtone".to_string(),
+                PedalType::Lossy => "Lossy".to_string(),
+                PedalType::BrothersAm => "BrothersAm".to_string(),
+                PedalType::ReverseModeC => "ReverseModeC".to_string(),
+                PedalType::Clean => "Clean".to_string(),
+                PedalType::Onward => "Onward".to_string(),
             };
             let app_handle = self.app_handle.as_ref().unwrap().clone();
             
@@ -259,6 +308,49 @@ impl MidiManager {
         }
         
         Ok(devices)
+    }
+
+    /// Send a Program Change on a specific channel to a device without establishing
+    /// a persistent connection. Used to trigger channel reassignment on pedals that
+    /// accept the first received PC to set their new MIDI channel.
+    pub fn send_channel_assignment_pc(&self, device_name: &str, channel: u8) -> MidiResult<()> {
+        if channel < 1 || channel > 16 {
+            return Err(MidiError::InvalidChannel(channel));
+        }
+
+        let midi_out = MidiOutput::new("Librarian Channel Assign")
+            .map_err(|e| MidiError::Other(e.to_string()))?;
+
+        let ports = midi_out.ports();
+        let port = ports
+            .iter()
+            .find(|p| {
+                midi_out
+                    .port_name(p)
+                    .map(|name| name.to_lowercase().contains(&device_name.to_lowercase()))
+                    .unwrap_or(false)
+            })
+            .ok_or_else(|| MidiError::DeviceNotFound(device_name.to_string()))?;
+
+        let mut output = midi_out
+            .connect(port, "Librarian Channel Assign")
+            .map_err(|e| MidiError::ConnectionFailed(e.to_string()))?;
+
+        // Send PC 1 — same value used to recall the first bank slot.
+        // Program 0 is outside the valid range on CB pedals (1–122), so using 1
+        // ensures the pedal treats this as a valid PC and reads the channel from
+        // the status byte to complete the channel assignment.
+        let status = 0xC0 + (channel - 1);
+        output
+            .send(&[status, 1])
+            .map_err(|e| MidiError::SendFailed(e.to_string()))?;
+
+        println!(
+            "✅ Sent channel assignment PC on channel {} to '{}'",
+            channel, device_name
+        );
+
+        Ok(())
     }
     
     /// Connect to a Microcosm pedal
@@ -596,6 +688,49 @@ impl MidiManager {
         }
     }
     
+    /// Save current state to a Gen Loss MKII preset slot (1-122) using CC 111
+    pub fn save_gen_loss_preset(
+        &mut self,
+        device_name: &str,
+        slot: u8,
+    ) -> MidiResult<()> {
+        if slot < 1 || slot > 122 {
+            return Err(MidiError::Other(format!("Invalid preset slot: {}. Must be 1-122", slot)));
+        }
+        
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        
+        match device {
+            DeviceConnection::GenLossMkii { connection, .. } => {
+                connection.send_cc(GEN_LOSS_CC_PRESET_SAVE, slot)?;
+                println!("[Gen Loss MKII] Saved current state to preset slot {}", slot);
+                
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Gen Loss MKII".to_string())),
+        }
+    }
+    
+    /// Send a program change to a Gen Loss MKII (navigate to preset slot 1-122)
+    pub fn send_gen_loss_program_change(
+        &mut self,
+        device_name: &str,
+        program: u8,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+
+        match device {
+            DeviceConnection::GenLossMkii { connection, .. } => {
+                connection.send_program_change(program)?;
+                println!("[Gen Loss MKII] Sent PC {} (navigated to preset slot {})", program, program);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Gen Loss MKII".to_string())),
+        }
+    }
+
     /// Get the current state of a Microcosm
     pub fn get_microcosm_state(&self, device_name: &str) -> MidiResult<MicrocosmState> {
         let device = self.connections.get(device_name)
@@ -1077,6 +1212,896 @@ impl MidiManager {
         }
     }
 
+    // ========================================================================
+    // Chase Bliss Audio Mood MkII Methods
+    // ========================================================================
+
+    /// Connect to a Chase Bliss Audio Mood MkII
+    pub fn connect_mood_mkii(
+        &mut self,
+        device_name: &str,
+        midi_channel: u8,
+    ) -> MidiResult<()> {
+        if midi_channel < 1 || midi_channel > 16 {
+            return Err(MidiError::InvalidChannel(midi_channel));
+        }
+        if self.connections.contains_key(device_name) {
+            return Err(MidiError::AlreadyConnected(device_name.to_string()));
+        }
+        let midi_out = self.midi_output.take()
+            .ok_or_else(|| MidiError::Other("MIDI output not initialized".to_string()))?;
+        let port_opt = {
+            let ports = midi_out.ports();
+            ports.into_iter()
+                .find(|p| {
+                    midi_out.port_name(p)
+                        .map(|name| name.to_lowercase().contains(&device_name.to_lowercase()))
+                        .unwrap_or(false)
+                })
+        };
+        let port = port_opt.ok_or_else(|| MidiError::DeviceNotFound(device_name.to_string()))?;
+        let output = midi_out.connect(&port, "Librarian")
+            .map_err(|e| MidiError::ConnectionFailed(e.to_string()))?;
+        let input = self.setup_midi_input(device_name, PedalType::MoodMkii, midi_channel)?;
+        let connection = MidiConnection { output, input, midi_channel };
+        let state = MoodMkii::new(midi_channel);
+        self.connections.insert(device_name.to_string(), DeviceConnection::MoodMkii { connection, state });
+        println!("✅ Connected to Mood MkII: '{}' on MIDI Channel {}", device_name, midi_channel);
+        self.midi_output = Some(MidiOutput::new("Librarian Output")
+            .map_err(|e| MidiError::Other(e.to_string()))?);
+        Ok(())
+    }
+
+    /// Send a parameter change to a Mood MkII
+    pub fn send_mood_mkii_parameter(
+        &mut self,
+        device_name: &str,
+        param: MoodMkiiParameter,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::MoodMkii { connection, state } => {
+                let cc_number = param.cc_number();
+                let cc_value = param.cc_value();
+                #[cfg(debug_assertions)]
+                println!("[Mood MkII] Sending CC#{} = {} (ch {})", cc_number, cc_value, connection.midi_channel);
+                connection.send_cc(cc_number, cc_value)?;
+                state.update_state(&param);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Mood MkII".to_string())),
+        }
+    }
+
+    /// Get the current state of a Mood MkII
+    pub fn get_mood_mkii_state(&self, device_name: &str) -> MidiResult<MoodMkiiState> {
+        let device = self.connections.get(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::MoodMkii { state, .. } => Ok(state.state.clone()),
+            _ => Err(MidiError::Other("Device is not a Mood MkII".to_string())),
+        }
+    }
+
+    /// Recall a preset on a Mood MkII (send all parameters)
+    pub fn recall_mood_mkii_preset(
+        &mut self,
+        device_name: &str,
+        state: &MoodMkiiState,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::MoodMkii { connection, state: device_state } => {
+                let temp = MoodMkii { state: state.clone(), midi_channel: connection.midi_channel };
+                let cc_map = temp.state_as_cc_map();
+                println!("[Mood MkII] Recalling preset: sending {} CC messages", cc_map.len());
+                for (cc_number, value) in cc_map.iter() {
+                    connection.send_cc(*cc_number, *value)?;
+                    tokio::task::block_in_place(|| thread::sleep(Duration::from_millis(20)));
+                }
+                println!("[Mood MkII] Preset recall complete");
+                *device_state = temp;
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Mood MkII".to_string())),
+        }
+    }
+
+    /// Save current state to a Mood MkII preset slot (1-122)
+    pub fn save_mood_mkii_preset(
+        &mut self,
+        device_name: &str,
+        slot: u8,
+    ) -> MidiResult<()> {
+        if slot < 1 || slot > 122 {
+            return Err(MidiError::Other(format!("Invalid preset slot: {}. Must be 1-122", slot)));
+        }
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::MoodMkii { connection, .. } => {
+                connection.send_cc(MOOD_CC_PRESET_SAVE, slot)?;
+                println!("[Mood MkII] Saved current state to preset slot {}", slot);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Mood MkII".to_string())),
+        }
+    }
+
+    /// Send a program change to a Mood MkII (navigate to preset slot 1-122)
+    pub fn send_mood_mkii_program_change(
+        &mut self,
+        device_name: &str,
+        program: u8,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::MoodMkii { connection, .. } => {
+                connection.send_program_change(program)?;
+                println!("[Mood MkII] Sent PC {} (navigated to preset slot {})", program, program);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Mood MkII".to_string())),
+        }
+    }
+
+    // ========================================================================
+    // Chase Bliss Audio Billy Strings Wombtone Methods
+    // ========================================================================
+
+    /// Connect to a Chase Bliss Audio Billy Strings Wombtone
+    pub fn connect_billy_strings_wombtone(
+        &mut self,
+        device_name: &str,
+        midi_channel: u8,
+    ) -> MidiResult<()> {
+        if midi_channel < 1 || midi_channel > 16 {
+            return Err(MidiError::InvalidChannel(midi_channel));
+        }
+        if self.connections.contains_key(device_name) {
+            return Err(MidiError::AlreadyConnected(device_name.to_string()));
+        }
+        let midi_out = self.midi_output.take()
+            .ok_or_else(|| MidiError::Other("MIDI output not initialized".to_string()))?;
+        let port_opt = {
+            let ports = midi_out.ports();
+            ports.into_iter()
+                .find(|p| {
+                    midi_out.port_name(p)
+                        .map(|name| name.to_lowercase().contains(&device_name.to_lowercase()))
+                        .unwrap_or(false)
+                })
+        };
+        let port = port_opt.ok_or_else(|| MidiError::DeviceNotFound(device_name.to_string()))?;
+        let output = midi_out.connect(&port, "Librarian")
+            .map_err(|e| MidiError::ConnectionFailed(e.to_string()))?;
+        let input = self.setup_midi_input(device_name, PedalType::BillyStringsWombtone, midi_channel)?;
+        let connection = MidiConnection { output, input, midi_channel };
+        let state = BillyStringsWombtone::new(midi_channel);
+        self.connections.insert(device_name.to_string(), DeviceConnection::BillyStringsWombtone { connection, state });
+        println!("✅ Connected to Billy Strings Wombtone: '{}' on MIDI Channel {}", device_name, midi_channel);
+        self.midi_output = Some(MidiOutput::new("Librarian Output")
+            .map_err(|e| MidiError::Other(e.to_string()))?);
+        Ok(())
+    }
+
+    /// Send a parameter change to a Billy Strings Wombtone
+    pub fn send_billy_strings_wombtone_parameter(
+        &mut self,
+        device_name: &str,
+        param: BillyStringsWombtoneParameter,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::BillyStringsWombtone { connection, state } => {
+                let cc_number = param.cc_number();
+                let cc_value = param.cc_value();
+                #[cfg(debug_assertions)]
+                println!("[Billy Strings Wombtone] Sending CC#{} = {} (ch {})", cc_number, cc_value, connection.midi_channel);
+                connection.send_cc(cc_number, cc_value)?;
+                state.update_state(&param);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Billy Strings Wombtone".to_string())),
+        }
+    }
+
+    /// Get the current state of a Billy Strings Wombtone
+    pub fn get_billy_strings_wombtone_state(&self, device_name: &str) -> MidiResult<BillyStringsWombtoneState> {
+        let device = self.connections.get(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::BillyStringsWombtone { state, .. } => Ok(state.state.clone()),
+            _ => Err(MidiError::Other("Device is not a Billy Strings Wombtone".to_string())),
+        }
+    }
+
+    /// Recall a preset on a Billy Strings Wombtone (send all parameters)
+    pub fn recall_billy_strings_wombtone_preset(
+        &mut self,
+        device_name: &str,
+        state: &BillyStringsWombtoneState,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::BillyStringsWombtone { connection, state: device_state } => {
+                let temp = BillyStringsWombtone { state: state.clone(), midi_channel: connection.midi_channel };
+                let cc_map = temp.state_as_cc_map();
+                println!("[Billy Strings Wombtone] Recalling preset: sending {} CC messages", cc_map.len());
+                for (cc_number, value) in cc_map.iter() {
+                    connection.send_cc(*cc_number, *value)?;
+                    tokio::task::block_in_place(|| thread::sleep(Duration::from_millis(20)));
+                }
+                println!("[Billy Strings Wombtone] Preset recall complete");
+                *device_state = temp;
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Billy Strings Wombtone".to_string())),
+        }
+    }
+
+    /// Save current state to a Billy Strings Wombtone preset slot (1-122)
+    pub fn save_billy_strings_wombtone_preset(
+        &mut self,
+        device_name: &str,
+        slot: u8,
+    ) -> MidiResult<()> {
+        if slot < 1 || slot > 122 {
+            return Err(MidiError::Other(format!("Invalid preset slot: {}. Must be 1-122", slot)));
+        }
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::BillyStringsWombtone { connection, .. } => {
+                connection.send_cc(BSW_CC_PRESET_SAVE, slot)?;
+                println!("[Billy Strings Wombtone] Saved current state to preset slot {}", slot);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Billy Strings Wombtone".to_string())),
+        }
+    }
+
+    /// Send a program change to a Billy Strings Wombtone (navigate to preset slot 1-122)
+    pub fn send_billy_strings_wombtone_program_change(
+        &mut self,
+        device_name: &str,
+        program: u8,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::BillyStringsWombtone { connection, .. } => {
+                connection.send_program_change(program)?;
+                println!("[Billy Strings Wombtone] Sent PC {} (navigated to preset slot {})", program, program);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Billy Strings Wombtone".to_string())),
+        }
+    }
+
+    // ========================================================================
+    // Chase Bliss Audio Lossy Methods
+    // ========================================================================
+
+    /// Connect to a Chase Bliss Audio Lossy
+    pub fn connect_lossy(
+        &mut self,
+        device_name: &str,
+        midi_channel: u8,
+    ) -> MidiResult<()> {
+        if midi_channel < 1 || midi_channel > 16 {
+            return Err(MidiError::InvalidChannel(midi_channel));
+        }
+        if self.connections.contains_key(device_name) {
+            return Err(MidiError::AlreadyConnected(device_name.to_string()));
+        }
+        let midi_out = self.midi_output.take()
+            .ok_or_else(|| MidiError::Other("MIDI output not initialized".to_string()))?;
+        let port_opt = {
+            let ports = midi_out.ports();
+            ports.into_iter()
+                .find(|p| {
+                    midi_out.port_name(p)
+                        .map(|name| name.to_lowercase().contains(&device_name.to_lowercase()))
+                        .unwrap_or(false)
+                })
+        };
+        let port = port_opt.ok_or_else(|| MidiError::DeviceNotFound(device_name.to_string()))?;
+        let output = midi_out.connect(&port, "Librarian")
+            .map_err(|e| MidiError::ConnectionFailed(e.to_string()))?;
+        let input = self.setup_midi_input(device_name, PedalType::Lossy, midi_channel)?;
+        let connection = MidiConnection { output, input, midi_channel };
+        let state = Lossy::new(midi_channel);
+        self.connections.insert(device_name.to_string(), DeviceConnection::Lossy { connection, state });
+        println!("✅ Connected to Lossy: '{}' on MIDI Channel {}", device_name, midi_channel);
+        self.midi_output = Some(MidiOutput::new("Librarian Output")
+            .map_err(|e| MidiError::Other(e.to_string()))?);
+        Ok(())
+    }
+
+    /// Send a parameter change to a Lossy
+    pub fn send_lossy_parameter(
+        &mut self,
+        device_name: &str,
+        param: LossyParameter,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::Lossy { connection, state } => {
+                let cc_number = param.cc_number();
+                let cc_value = param.cc_value();
+                #[cfg(debug_assertions)]
+                println!("[Lossy] Sending CC#{} = {} (ch {})", cc_number, cc_value, connection.midi_channel);
+                connection.send_cc(cc_number, cc_value)?;
+                state.update_state(&param);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Lossy".to_string())),
+        }
+    }
+
+    /// Get the current state of a Lossy
+    pub fn get_lossy_state(&self, device_name: &str) -> MidiResult<LossyState> {
+        let device = self.connections.get(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::Lossy { state, .. } => Ok(state.state.clone()),
+            _ => Err(MidiError::Other("Device is not a Lossy".to_string())),
+        }
+    }
+
+    /// Recall a preset on a Lossy (send all parameters)
+    pub fn recall_lossy_preset(
+        &mut self,
+        device_name: &str,
+        state: &LossyState,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::Lossy { connection, state: device_state } => {
+                let temp = Lossy { state: state.clone(), midi_channel: connection.midi_channel };
+                let cc_map = temp.state_as_cc_map();
+                println!("[Lossy] Recalling preset: sending {} CC messages", cc_map.len());
+                for (cc_number, value) in cc_map.iter() {
+                    connection.send_cc(*cc_number, *value)?;
+                    tokio::task::block_in_place(|| thread::sleep(Duration::from_millis(20)));
+                }
+                println!("[Lossy] Preset recall complete");
+                *device_state = temp;
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Lossy".to_string())),
+        }
+    }
+
+    /// Save current state to a Lossy preset slot (1-122)
+    pub fn save_lossy_preset(
+        &mut self,
+        device_name: &str,
+        slot: u8,
+    ) -> MidiResult<()> {
+        if slot < 1 || slot > 122 {
+            return Err(MidiError::Other(format!("Invalid preset slot: {}. Must be 1-122", slot)));
+        }
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::Lossy { connection, .. } => {
+                connection.send_cc(LOSSY_CC_PRESET_SAVE, slot)?;
+                println!("[Lossy] Saved current state to preset slot {}", slot);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Lossy".to_string())),
+        }
+    }
+
+    /// Send a program change to a Lossy (navigate to preset slot 1-122)
+    pub fn send_lossy_program_change(
+        &mut self,
+        device_name: &str,
+        program: u8,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::Lossy { connection, .. } => {
+                connection.send_program_change(program)?;
+                println!("[Lossy] Sent PC {} (navigated to preset slot {})", program, program);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Lossy".to_string())),
+        }
+    }
+
+    // ========================================================================
+    // Chase Bliss Audio Brothers AM Methods
+    // ========================================================================
+
+    /// Connect to a Chase Bliss Brothers AM pedal
+    pub fn connect_brothers_am(
+        &mut self,
+        device_name: &str,
+        midi_channel: u8,
+    ) -> MidiResult<()> {
+        if midi_channel < 1 || midi_channel > 16 {
+            return Err(MidiError::InvalidChannel(midi_channel));
+        }
+        if self.connections.contains_key(device_name) {
+            return Err(MidiError::AlreadyConnected(device_name.to_string()));
+        }
+        let midi_out = self.midi_output.take()
+            .ok_or_else(|| MidiError::Other("MIDI output not initialized".to_string()))?;
+        let port_opt = {
+            let ports = midi_out.ports();
+            ports.into_iter().find(|p| {
+                midi_out.port_name(p)
+                    .map(|name| name.to_lowercase().contains(&device_name.to_lowercase()))
+                    .unwrap_or(false)
+            })
+        };
+        let port = port_opt.ok_or_else(|| MidiError::DeviceNotFound(device_name.to_string()))?;
+        let output = midi_out.connect(&port, "Librarian")
+            .map_err(|e| MidiError::ConnectionFailed(e.to_string()))?;
+        let input = self.setup_midi_input(device_name, PedalType::BrothersAm, midi_channel)?;
+        let connection = MidiConnection { output, input, midi_channel };
+        let state = BrothersAm::new(midi_channel);
+        self.connections.insert(
+            device_name.to_string(),
+            DeviceConnection::BrothersAm { connection, state },
+        );
+        println!("✅ Connected to Brothers AM: '{}' on MIDI Channel {}", device_name, midi_channel);
+        self.midi_output = Some(MidiOutput::new("Librarian Output")
+            .map_err(|e| MidiError::Other(e.to_string()))?);
+        Ok(())
+    }
+
+    /// Send a parameter change to a Brothers AM
+    pub fn send_brothers_am_parameter(
+        &mut self,
+        device_name: &str,
+        param: BrothersAmParameter,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::BrothersAm { connection, state } => {
+                let cc_number = param.cc_number();
+                let cc_value = param.cc_value();
+                #[cfg(debug_assertions)]
+                println!("[Brothers AM] Sending CC#{} = {} (ch {})", cc_number, cc_value, connection.midi_channel);
+                connection.send_cc(cc_number, cc_value)?;
+                state.update_state(&param);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Brothers AM".to_string())),
+        }
+    }
+
+    /// Recall a preset on a Brothers AM (send all parameters)
+    pub fn recall_brothers_am_preset(
+        &mut self,
+        device_name: &str,
+        state: &BrothersAmState,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::BrothersAm { connection, state: device_state } => {
+                let temp = BrothersAm {
+                    state: state.clone(),
+                    midi_channel: connection.midi_channel,
+                };
+                let cc_map = temp.state_as_cc_map();
+                println!("[Brothers AM] Recalling preset: sending {} CC messages", cc_map.len());
+                let mut cc_pairs: Vec<(u8, u8)> = cc_map.into_iter().collect();
+                cc_pairs.sort_by_key(|(cc, _)| *cc);
+                for (cc_number, value) in cc_pairs {
+                    connection.send_cc(cc_number, value)?;
+                    tokio::task::block_in_place(|| thread::sleep(Duration::from_millis(20)));
+                }
+                println!("[Brothers AM] Preset recall complete");
+                *device_state = temp;
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Brothers AM".to_string())),
+        }
+    }
+
+    /// Save current state to a Brothers AM preset slot (1-122) using CC 111
+    pub fn save_brothers_am_preset(
+        &mut self,
+        device_name: &str,
+        slot: u8,
+    ) -> MidiResult<()> {
+        if slot < 1 || slot > 122 {
+            return Err(MidiError::Other(format!("Invalid preset slot: {}. Must be 1-122", slot)));
+        }
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::BrothersAm { connection, .. } => {
+                connection.send_cc(BROTHERS_AM_CC_PRESET_SAVE, slot)?;
+                println!("[Brothers AM] Saved current state to preset slot {}", slot);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Brothers AM".to_string())),
+        }
+    }
+
+    /// Send a program change to a Brothers AM (navigate to preset slot 1-122)
+    pub fn send_brothers_am_program_change(
+        &mut self,
+        device_name: &str,
+        program: u8,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::BrothersAm { connection, .. } => {
+                connection.send_program_change(program)?;
+                println!("[Brothers AM] Sent PC {} (navigated to preset slot {})", program, program);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Brothers AM".to_string())),
+        }
+    }
+
+    /// Get the current state of a Brothers AM
+    pub fn get_brothers_am_state(&self, device_name: &str) -> MidiResult<BrothersAmState> {
+        let device = self.connections.get(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::BrothersAm { state, .. } => Ok(state.state.clone()),
+            _ => Err(MidiError::Other("Device is not a Brothers AM".to_string())),
+        }
+    }
+
+    // ========================================================================
+    // Chase Bliss Audio Reverse Mode C Methods
+    // ========================================================================
+
+    /// Connect to a Chase Bliss Reverse Mode C pedal
+    pub fn connect_reverse_mode_c(
+        &mut self,
+        device_name: &str,
+        midi_channel: u8,
+    ) -> MidiResult<()> {
+        if midi_channel < 1 || midi_channel > 16 {
+            return Err(MidiError::InvalidChannel(midi_channel));
+        }
+        if self.connections.contains_key(device_name) {
+            return Err(MidiError::AlreadyConnected(device_name.to_string()));
+        }
+        let midi_out = self.midi_output.take()
+            .ok_or_else(|| MidiError::Other("MIDI output not initialized".to_string()))?;
+        let port_opt = {
+            let ports = midi_out.ports();
+            ports.into_iter().find(|p| {
+                midi_out.port_name(p)
+                    .map(|name| name.to_lowercase().contains(&device_name.to_lowercase()))
+                    .unwrap_or(false)
+            })
+        };
+        let port = port_opt.ok_or_else(|| MidiError::DeviceNotFound(device_name.to_string()))?;
+        let output = midi_out.connect(&port, "Librarian")
+            .map_err(|e| MidiError::ConnectionFailed(e.to_string()))?;
+        let input = self.setup_midi_input(device_name, PedalType::ReverseModeC, midi_channel)?;
+        let connection = MidiConnection { output, input, midi_channel };
+        let state = ReverseModeC::new(midi_channel);
+        self.connections.insert(
+            device_name.to_string(),
+            DeviceConnection::ReverseModeC { connection, state },
+        );
+        println!("✅ Connected to Reverse Mode C: '{}' on MIDI Channel {}", device_name, midi_channel);
+        self.midi_output = Some(MidiOutput::new("Librarian Output")
+            .map_err(|e| MidiError::Other(e.to_string()))?);
+        Ok(())
+    }
+
+    /// Send a parameter change to a Reverse Mode C
+    pub fn send_reverse_mode_c_parameter(
+        &mut self,
+        device_name: &str,
+        param: ReverseModeCParameter,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::ReverseModeC { connection, state } => {
+                let cc_number = param.cc_number();
+                let cc_value = param.cc_value();
+                #[cfg(debug_assertions)]
+                println!("[Reverse Mode C] Sending CC#{} = {} (ch {})", cc_number, cc_value, connection.midi_channel);
+                connection.send_cc(cc_number, cc_value)?;
+                state.update_state(&param);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Reverse Mode C".to_string())),
+        }
+    }
+
+    /// Recall a preset on a Reverse Mode C (send all parameters)
+    pub fn recall_reverse_mode_c_preset(
+        &mut self,
+        device_name: &str,
+        state: &ReverseModeCState,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::ReverseModeC { connection, state: device_state } => {
+                let temp = ReverseModeC {
+                    state: state.clone(),
+                    midi_channel: connection.midi_channel,
+                };
+                let cc_map = temp.state_as_cc_map();
+                println!("[Reverse Mode C] Recalling preset: sending {} CC messages", cc_map.len());
+                let mut cc_pairs: Vec<(u8, u8)> = cc_map.into_iter().collect();
+                cc_pairs.sort_by_key(|(cc, _)| *cc);
+                for (cc_number, value) in cc_pairs {
+                    connection.send_cc(cc_number, value)?;
+                    tokio::task::block_in_place(|| thread::sleep(Duration::from_millis(20)));
+                }
+                println!("[Reverse Mode C] Preset recall complete");
+                device_state.state = state.clone();
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Reverse Mode C".to_string())),
+        }
+    }
+
+    /// Save current state to a Reverse Mode C preset slot (1-122) using CC 111
+    pub fn save_reverse_mode_c_preset(
+        &mut self,
+        device_name: &str,
+        slot: u8,
+    ) -> MidiResult<()> {
+        if slot < 1 || slot > 122 {
+            return Err(MidiError::Other(format!("Invalid preset slot: {}. Must be 1-122", slot)));
+        }
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::ReverseModeC { connection, .. } => {
+                connection.send_cc(REVERSE_MODE_C_CC_PRESET_SAVE, slot)?;
+                println!("[Reverse Mode C] Saved current state to preset slot {}", slot);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Reverse Mode C".to_string())),
+        }
+    }
+
+    /// Send a program change to a Reverse Mode C (navigate to preset slot 1-122)
+    pub fn send_reverse_mode_c_program_change(
+        &mut self,
+        device_name: &str,
+        program: u8,
+    ) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::ReverseModeC { connection, .. } => {
+                connection.send_program_change(program)?;
+                println!("[Reverse Mode C] Sent PC {} (navigated to preset slot {})", program, program);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Reverse Mode C".to_string())),
+        }
+    }
+
+    /// Get the current state of a Reverse Mode C
+    pub fn get_reverse_mode_c_state(&self, device_name: &str) -> MidiResult<ReverseModeCState> {
+        let device = self.connections.get(device_name)
+            .ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::ReverseModeC { state, .. } => Ok(state.state.clone()),
+            _ => Err(MidiError::Other("Device is not a Reverse Mode C".to_string())),
+        }
+    }
+
+    // ========================================================================
+    // Chase Bliss Audio Clean Methods
+    // ========================================================================
+
+    /// Connect to a Chase Bliss Audio Clean
+    pub fn connect_clean(&mut self, device_name: &str, midi_channel: u8) -> MidiResult<()> {
+        if midi_channel < 1 || midi_channel > 16 {
+            return Err(MidiError::InvalidChannel(midi_channel));
+        }
+        if self.connections.contains_key(device_name) {
+            return Err(MidiError::AlreadyConnected(device_name.to_string()));
+        }
+        let midi_out = self.midi_output.take()
+            .ok_or_else(|| MidiError::Other("MIDI output not initialized".to_string()))?;
+        let port_opt = {
+            let ports = midi_out.ports();
+            ports.into_iter().find(|p| midi_out.port_name(p).map(|name| name.to_lowercase().contains(&device_name.to_lowercase())).unwrap_or(false))
+        };
+        let port = port_opt.ok_or_else(|| MidiError::DeviceNotFound(device_name.to_string()))?;
+        let output = midi_out.connect(&port, "Librarian").map_err(|e| MidiError::ConnectionFailed(e.to_string()))?;
+        let input = self.setup_midi_input(device_name, PedalType::Clean, midi_channel)?;
+        let connection = MidiConnection { output, input, midi_channel };
+        let state = Clean::new(midi_channel);
+        self.connections.insert(device_name.to_string(), DeviceConnection::Clean { connection, state });
+        println!("✅ Connected to Clean: '{}' on MIDI Channel {}", device_name, midi_channel);
+        self.midi_output = Some(MidiOutput::new("Librarian Output").map_err(|e| MidiError::Other(e.to_string()))?);
+        Ok(())
+    }
+
+    /// Send a parameter change to a Clean
+    pub fn send_clean_parameter(&mut self, device_name: &str, param: CleanParameter) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name).ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::Clean { connection, state } => {
+                connection.send_cc(param.cc_number(), param.cc_value())?;
+                state.update_state(&param);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Clean".to_string())),
+        }
+    }
+
+    /// Get current state of a Clean
+    pub fn get_clean_state(&self, device_name: &str) -> MidiResult<CleanState> {
+        let device = self.connections.get(device_name).ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::Clean { state, .. } => Ok(state.state.clone()),
+            _ => Err(MidiError::Other("Device is not a Clean".to_string())),
+        }
+    }
+
+    /// Recall a preset on a Clean (send all parameters)
+    pub fn recall_clean_preset(&mut self, device_name: &str, state: &CleanState) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name).ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::Clean { connection, state: device_state } => {
+                let temp = Clean { state: state.clone(), midi_channel: connection.midi_channel };
+                let cc_map = temp.state_as_cc_map();
+                for (cc_number, value) in cc_map.iter() {
+                    connection.send_cc(*cc_number, *value)?;
+                    tokio::task::block_in_place(|| thread::sleep(Duration::from_millis(20)));
+                }
+                *device_state = temp;
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Clean".to_string())),
+        }
+    }
+
+    /// Save current state to a Clean preset slot (1-122)
+    pub fn save_clean_preset(&mut self, device_name: &str, slot: u8) -> MidiResult<()> {
+        if slot < 1 || slot > 122 {
+            return Err(MidiError::Other(format!("Invalid preset slot: {}. Must be 1-122", slot)));
+        }
+        let device = self.connections.get_mut(device_name).ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::Clean { connection, .. } => {
+                connection.send_cc(CLEAN_CC_PRESET_SAVE, slot)?;
+                println!("[Clean] Saved current state to preset slot {}", slot);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Clean".to_string())),
+        }
+    }
+
+    /// Send a program change to a Clean (navigate to preset slot 1-122)
+    pub fn send_clean_program_change(&mut self, device_name: &str, program: u8) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name).ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::Clean { connection, .. } => {
+                connection.send_program_change(program)?;
+                println!("[Clean] Sent PC {} (navigated to preset slot {})", program, program);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not a Clean".to_string())),
+        }
+    }
+
+    // ========================================================================
+    // Chase Bliss Audio Onward Methods
+    // ========================================================================
+
+    /// Connect to a Chase Bliss Audio Onward
+    pub fn connect_onward(&mut self, device_name: &str, midi_channel: u8) -> MidiResult<()> {
+        if midi_channel < 1 || midi_channel > 16 {
+            return Err(MidiError::InvalidChannel(midi_channel));
+        }
+        if self.connections.contains_key(device_name) {
+            return Err(MidiError::AlreadyConnected(device_name.to_string()));
+        }
+        let midi_out = self.midi_output.take()
+            .ok_or_else(|| MidiError::Other("MIDI output not initialized".to_string()))?;
+        let port_opt = {
+            let ports = midi_out.ports();
+            ports.into_iter().find(|p| midi_out.port_name(p).map(|name| name.to_lowercase().contains(&device_name.to_lowercase())).unwrap_or(false))
+        };
+        let port = port_opt.ok_or_else(|| MidiError::DeviceNotFound(device_name.to_string()))?;
+        let output = midi_out.connect(&port, "Librarian").map_err(|e| MidiError::ConnectionFailed(e.to_string()))?;
+        let input = self.setup_midi_input(device_name, PedalType::Onward, midi_channel)?;
+        let connection = MidiConnection { output, input, midi_channel };
+        let state = Onward::new(midi_channel);
+        self.connections.insert(device_name.to_string(), DeviceConnection::Onward { connection, state });
+        println!("✅ Connected to Onward: '{}' on MIDI Channel {}", device_name, midi_channel);
+        self.midi_output = Some(MidiOutput::new("Librarian Output").map_err(|e| MidiError::Other(e.to_string()))?);
+        Ok(())
+    }
+
+    /// Send a parameter change to an Onward
+    pub fn send_onward_parameter(&mut self, device_name: &str, param: OnwardParameter) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name).ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::Onward { connection, state } => {
+                connection.send_cc(param.cc_number(), param.cc_value())?;
+                state.update_state(&param);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not an Onward".to_string())),
+        }
+    }
+
+    /// Get current state of an Onward
+    pub fn get_onward_state(&self, device_name: &str) -> MidiResult<OnwardState> {
+        let device = self.connections.get(device_name).ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::Onward { state, .. } => Ok(state.state.clone()),
+            _ => Err(MidiError::Other("Device is not an Onward".to_string())),
+        }
+    }
+
+    /// Recall a preset on an Onward (send all parameters)
+    pub fn recall_onward_preset(&mut self, device_name: &str, state: &OnwardState) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name).ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::Onward { connection, state: device_state } => {
+                let temp = Onward { state: state.clone(), midi_channel: connection.midi_channel };
+                let cc_map = temp.state_as_cc_map();
+                for (cc_number, value) in cc_map.iter() {
+                    connection.send_cc(*cc_number, *value)?;
+                    tokio::task::block_in_place(|| thread::sleep(Duration::from_millis(20)));
+                }
+                *device_state = temp;
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not an Onward".to_string())),
+        }
+    }
+
+    /// Save current state to an Onward preset slot (1-122)
+    pub fn save_onward_preset(&mut self, device_name: &str, slot: u8) -> MidiResult<()> {
+        if slot < 1 || slot > 122 {
+            return Err(MidiError::Other(format!("Invalid preset slot: {}. Must be 1-122", slot)));
+        }
+        let device = self.connections.get_mut(device_name).ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::Onward { connection, .. } => {
+                connection.send_cc(ONWARD_CC_PRESET_SAVE, slot)?;
+                println!("[Onward] Saved current state to preset slot {}", slot);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not an Onward".to_string())),
+        }
+    }
+
+    /// Send a program change to an Onward (navigate to preset slot 1-122)
+    pub fn send_onward_program_change(&mut self, device_name: &str, program: u8) -> MidiResult<()> {
+        let device = self.connections.get_mut(device_name).ok_or_else(|| MidiError::NotConnected(device_name.to_string()))?;
+        match device {
+            DeviceConnection::Onward { connection, .. } => {
+                connection.send_program_change(program)?;
+                println!("[Onward] Sent PC {} (navigated to preset slot {})", program, program);
+                Ok(())
+            }
+            _ => Err(MidiError::Other("Device is not an Onward".to_string())),
+        }
+    }
+
     /// List all connected devices
     pub fn connected_devices(&self) -> Vec<ConnectedDevice> {
         self.connections.iter().map(|(name, device)| {
@@ -1095,6 +2120,27 @@ impl MidiManager {
                 }
                 DeviceConnection::Cxm1978 { connection, .. } => {
                     (PedalType::Cxm1978, connection.midi_channel)
+                }
+                DeviceConnection::MoodMkii { connection, .. } => {
+                    (PedalType::MoodMkii, connection.midi_channel)
+                }
+                DeviceConnection::BillyStringsWombtone { connection, .. } => {
+                    (PedalType::BillyStringsWombtone, connection.midi_channel)
+                }
+                DeviceConnection::Lossy { connection, .. } => {
+                    (PedalType::Lossy, connection.midi_channel)
+                }
+                DeviceConnection::BrothersAm { connection, .. } => {
+                    (PedalType::BrothersAm, connection.midi_channel)
+                }
+                DeviceConnection::ReverseModeC { connection, .. } => {
+                    (PedalType::ReverseModeC, connection.midi_channel)
+                }
+                DeviceConnection::Clean { connection, .. } => {
+                    (PedalType::Clean, connection.midi_channel)
+                }
+                DeviceConnection::Onward { connection, .. } => {
+                    (PedalType::Onward, connection.midi_channel)
                 }
             };
             

@@ -9,6 +9,7 @@ export const microcosmDefinition: PedalDefinition = {
   icon: '🌌',
   color: '#a855f7',
   hasEditor: true,
+  defaultMidiChannel: 1,
   bankConfig: {
     programChangeStart: 45,
     programChangeEnd: 60,

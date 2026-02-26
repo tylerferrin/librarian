@@ -7,6 +7,14 @@ import { MicrocosmEditor } from './components/pedals/microcosm';
 import { ChromaConsoleEditor } from './components/pedals/chroma_console';
 import { PreampMk2Editor } from './components/pedals/preamp_mk2';
 import { Cxm1978Editor } from './components/pedals/cxm1978';
+import { GenLossMkiiEditor } from './components/pedals/gen_loss_mkii';
+import { CleanEditor } from './components/pedals/clean';
+import { OnwardEditor } from './components/pedals/onward';
+import { BrothersAmEditor } from './components/pedals/brothers_am';
+import { ReverseModeCEditor } from './components/pedals/reverse_mode_c';
+import { MoodMkiiEditor } from './components/pedals/mood_mkii';
+import { BillyStringsWombtoneEditor } from './components/pedals/billy_strings_wombtone';
+import { LossyEditor } from './components/pedals/lossy';
 import { DeviceMismatchWarning } from './components/DeviceMismatchWarning';
 import { pedalRegistry } from './lib/midi/pedalRegistry';
 import { detectDeviceMismatch } from './lib/midi/deviceMismatchDetection';
@@ -18,6 +26,13 @@ import './lib/midi/pedals/gen-loss-mkii';
 import './lib/midi/pedals/chroma_console';
 import './lib/midi/pedals/preamp_mk2';
 import './lib/midi/pedals/cxm1978';
+import './lib/midi/pedals/clean';
+import './lib/midi/pedals/onward';
+import './lib/midi/pedals/brothers-am';
+import './lib/midi/pedals/reverse-mode-c';
+import './lib/midi/pedals/mood-mkii';
+import './lib/midi/pedals/billy-strings-wombtone';
+import './lib/midi/pedals/lossy';
 
 // Expose MIDI for console testing (dev only)
 import * as midi from './lib/midi/pedals/microcosm';
@@ -114,7 +129,21 @@ function App() {
       case 'Cxm1978':
         return <Cxm1978Editor deviceName={connectedDevice.name} />;
       case 'GenLossMkii':
-        return <ComingSoonEditor pedalType={activePedalType} />;
+        return <GenLossMkiiEditor deviceName={connectedDevice.name} />;
+      case 'Clean':
+        return <CleanEditor deviceName={connectedDevice.name} />;
+      case 'Onward':
+        return <OnwardEditor deviceName={connectedDevice.name} />;
+      case 'BrothersAm':
+        return <BrothersAmEditor deviceName={connectedDevice.name} />;
+      case 'ReverseModeC':
+        return <ReverseModeCEditor deviceName={connectedDevice.name} />;
+      case 'MoodMkii':
+        return <MoodMkiiEditor deviceName={connectedDevice.name} />;
+      case 'BillyStringsWombtone':
+        return <BillyStringsWombtoneEditor deviceName={connectedDevice.name} />;
+      case 'Lossy':
+        return <LossyEditor deviceName={connectedDevice.name} />;
       default:
         return <ComingSoonEditor pedalType={activePedalType} />;
     }
