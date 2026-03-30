@@ -1,0 +1,77 @@
+import type { PedalName } from './midi';
+import type { PedalState } from './pedals';
+
+export type MidiSaveCapability = 
+  | { type: 'supported'; ccNumber: number; description: string }
+  | { type: 'manualOnly'; instructions: string }
+  | { type: 'AutoSave' };
+
+export interface BankConfig {
+  programChangeStart: number;
+  programChangeEnd: number;
+  numBanks: number;
+  slotsPerBank: number;
+  bankLabels: string[];
+  bankColors: string[];
+  midiSave: MidiSaveCapability;
+}
+
+export interface SaveToBankResult {
+  success: boolean;
+  savedViaMidi: boolean;
+  manualSaveRequired: boolean;
+  instructions?: string;
+}
+
+export interface Preset {
+  id: string;
+  name: string;
+  pedalName: PedalName;
+  pedalType: string | null; // reserved for future effect-category tag
+  description?: string;
+  parameters: PedalState;
+  tags: string[];
+  isFavorite: boolean;
+  createdAt: number; // Unix timestamp
+  updatedAt: number; // Unix timestamp
+}
+
+export interface BankSlot {
+  bankNumber: number; // 45-60 for Microcosm
+  bankLabel: string; // "Bank 1A", "Bank 2C", etc.
+  color: string; // "red", "yellow", "green", "blue"
+  preset?: Preset; // null if empty
+  syncedAt?: number; // Unix timestamp when last synced
+}
+
+export interface PresetFilter {
+  pedalType?: string;
+  tags?: string[];
+  isFavorite?: boolean;
+  searchQuery?: string;
+}
+
+export interface SavePresetParams {
+  name: string;
+  pedalName: PedalName;
+  description?: string;
+  parameters: PedalState;
+  tags: string[];
+}
+
+export interface UpdatePresetParams {
+  id: string;
+  name?: string;
+  description?: string;
+  tags?: string[];
+  isFavorite?: boolean;
+  parameters?: PedalState;
+}
+
+/**
+ * Preset with bank assignment information.
+ * Used by the library drawer to show which banks a preset is loaded into.
+ */
+export interface PresetWithBanks extends Preset {
+  bankNumbers: number[]; // Bank slots this preset is assigned to (45-60)
+}
