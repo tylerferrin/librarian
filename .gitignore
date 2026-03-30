@@ -20,8 +20,11 @@ target/
 Cargo.lock
 
 # Tauri
-tauri/target/
-tauri/Cargo.lock
+apps/desktop/tauri/target/
+apps/desktop/tauri/Cargo.lock
+
+# Turborepo
+.turbo/
 
 # Editor
 .vscode/*

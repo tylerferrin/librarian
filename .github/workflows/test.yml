@@ -7,20 +7,20 @@ on:
     branches: [main, master]
 
 jobs:
-  backend:
-    name: Backend Tests (Rust)
+  desktop-backend:
+    name: Desktop Backend Tests (Rust)
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Setup Rust
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
           override: true
-      
+
       - name: Cache Cargo
         uses: actions/cache@v3
         with:
@@ -29,42 +29,45 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            tauri/target/
+            apps/desktop/tauri/target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Run Backend Tests
-        working-directory: ./tauri
+        working-directory: ./apps/desktop/tauri
         run: cargo test --lib --tests
-      
+
       - name: Run Backend Integration Tests
-        working-directory: ./tauri
+        working-directory: ./apps/desktop/tauri
         run: cargo test --test "*"
 
-  frontend:
-    name: Frontend Tests (TypeScript/React)
+  desktop-frontend:
+    name: Desktop Frontend Tests (TypeScript/React)
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '20'
           cache: 'npm'
-      
+
       - name: Install Dependencies
+        working-directory: ./apps/desktop
         run: npm ci
-      
+
       - name: Run Frontend Tests
+        working-directory: ./apps/desktop
         run: npm test -- --run
-      
+
       - name: Run Frontend Tests with Coverage
+        working-directory: ./apps/desktop
         run: npm run test:coverage
-      
+
       - name: Upload Coverage
         uses: codecov/codecov-action@v3
         if: always()
         with:
-          files: ./coverage/coverage-final.json
-          flags: frontend
+          files: ./apps/desktop/coverage/coverage-final.json
+          flags: desktop-frontend
