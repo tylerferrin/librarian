@@ -1,0 +1,192 @@
+---
+globs: apps/cathedral/src/**/*.ts
+alwaysApply: false
+---
+
+# CQRS (Command Query Responsibility Segregation) Patterns for Librarian
+
+This document establishes conventions and constraints for CQRS in `apps/cathedral`. For step-by-step implementation guidance, see the `cqrs` skill at `.cursor/skills/cqrs/SKILL.md`.
+
+## 1. Core Principles
+
+### 1.1 Separation of Concerns
+
+- **Commands**: Write operations and state changes
+- **Queries**: Read operations and data retrieval
+- **Handlers**: Execute business logic for commands and queries
+- **Buses**: Orchestrate command and query execution
+
+### 1.2 Immutability
+
+- All commands and queries must be immutable
+- Use readonly properties
+
+## 2. Command Conventions
+
+- Must extend `Command<T>` from `@nestjs/cqrs`
+- Must use object destructuring in constructor
+- Must validate inputs with Zod schemas where appropriate
+- Handlers must use `@CommandHandler`, `@Injectable`, and `@HandleError` decorators
+- Handlers must implement `ICommandHandler<TCommand, TResult>`
+- **Handlers MUST return `POJO<T>` types** (not domain entities)
+
+## 3. Query Conventions
+
+- Must extend `Query<T>` from `@nestjs/cqrs`
+- **Same class shape as commands**: declare each parameter as a `readonly` property on the class; constructor takes a single object, destructure it, and assign `this.prop = prop` for each. Example (see also `GetTaskByIdQuery`, `DeleteAuditCommand`):
+
+  ```typescript
+  export class GetTaskByIdQuery extends Query<TaskByIdResponseDto> {
+    readonly taskId: number;
+    readonly userId: string;
+    constructor({ taskId, userId }: { taskId: number; userId: string }) {
+      super();
+      this.taskId = taskId;
+      this.userId = userId;
+    }
+  }
+  ```
+- Handlers must use `@QueryHandler`, `@Injectable`, and `@HandleError` decorators
+- Handlers must implement `IQueryHandler<TQuery>`
+- May return domain entities, DTOs, or `POJO<T>` depending on use case
+
+## 4. Bus Execution
+
+**Do NOT add explicit generic type parameters to `queryBus.execute()` or `commandBus.execute()`.**
+
+Types are inferred from the Query/Command class definition:
+
+```typescript
+// ✅ Correct - types inferred
+await this.queryBus.execute(new FindSomethingQuery(options));
+
+// ❌ Wrong - explicit generics are unnecessary and forbidden
+await this.queryBus.execute<FindSomethingQuery, Result>(new FindSomethingQuery(options));
+```
+
+## 5. POJO Return Types
+
+### 5.1 When to Use
+
+- Command handlers MUST return `POJO<T>`
+- Query handlers MAY return `POJO<T>` when crossing architectural boundaries
+- Services consuming command results MUST handle `POJO<T>` types
+
+### 5.2 Benefits
+
+- JSON-serializable (Date → string conversion)
+- Function exclusion (no methods in serialized output)
+- Type safety maintained through TypeScript
+- Prevents entity method calls on serialized data
+
+### 5.3 Serialization
+
+- All domain entities extend `BaseEntity` which provides `serialize()`
+- Use `entity.serialize()` to get POJO representation
+- Use `@lib/utils/serialization.utils` for consistent serialization
+- Avoid external libraries (superjson, devalue) due to Jest ES module issues
+
+## 6. Error Handling
+
+- Use `@HandleError()` decorator on all handler execute methods
+- Throw domain-specific errors from handlers
+- Let infrastructure handle error transformation
+
+## 7. Do's and Don'ts
+
+### Do's
+
+- ✅ Use CQRS for clear separation of reads and writes
+- ✅ Return POJO types from command handlers
+- ✅ Extend BaseEntity for automatic serialization
+- ✅ Use object destructuring in command/query constructors
+- ✅ Use `@HandleError()` decorator for consistent error handling
+
+### Don'ts
+
+- ❌ Don't add explicit generic type parameters to bus execute calls
+- ❌ Don't return domain entities from command handlers
+- ❌ Don't call entity methods on POJO types
+- ❌ Don't use external serialization libraries in Jest environments
+- ❌ Don't mutate command/query objects after creation
+- ❌ Don't mix command and query responsibilities in single handlers
+- ❌ Don't utilize the query parameter in Query Handler execute methods when the query class is empty or unused in the handler.
+- ❌ Don't utilize the command parameter in Command Handler execute methods when the command class is empty or unused in the handler.
+
+## 8. When to Use CQRS vs Direct Port Access
+
+### 8.1 CQRS is for Cross-Domain Communication
+
+Use CQRS (CommandBus/QueryBus) when:
+
+- Communicating **across bounded contexts/domains**
+- A service in one domain needs data from another domain
+- You want explicit, traceable cross-domain dependencies
+
+### 8.2 Direct Port Access Within a Domain
+
+Within the same domain, services/handlers can:
+
+- Inject and use ports directly (e.g., `PatientRepositoryPort`)
+- Skip CQRS overhead for same-domain operations
+- This keeps cross-domain communication explicit while allowing efficient intra-domain access
+
+### 8.3 Examples
+
+```typescript
+// ✅ Cross-domain: ui-api reading from patient domain
+// ui-api/services/some.service.ts
+const lastSynced = await this.queryBus.execute(new GetEncounterLastSyncedQuery({ organizationId }));
+
+// ✅ Same-domain: patient cron writing to patient port
+// patient/cron/encounter-sync.cron.ts
+await this.encounterSyncCache.setLastSyncAttempt(organizationId, new Date());
+
+// ❌ Unnecessary: using CQRS within same domain when port suffices
+await this.commandBus.execute(new SetSyncStateCommand({ organizationId, timestamp }));
+```
+
+### 8.4 Domain Boundaries
+
+- **Do NOT** directly import services/ports from other domains
+- **DO** use CQRS to communicate across domain boundaries
+- This makes cross-domain dependencies explicit and testable
+
+## 9. CQRS as Public API Pattern
+
+When a domain needs to expose complex operations to other layers (UI-API, crons), use this pattern:
+
+### 9.1 Architecture
+
+```
+UI-API Layer              Domain Layer
+┌───────────────┐        ┌─────────────────────────────────┐
+│ ThinWrapper   │───────▶│ Command → Handler → AppService  │
+│ (calls cmd)   │  CQRS  │                                 │
+└───────────────┘        └─────────────────────────────────┘
+```
+
+### 9.2 Responsibilities
+
+| Layer               | Fetches Data | Business Logic | Orchestration          |
+| ------------------- | ------------ | -------------- | ---------------------- |
+| UI-API Service      | ❌            | ❌              | ❌ (just calls command) |
+| Handler             | ✅            | ❌              | ✅ (calls services)     |
+| Application Service | ❌            | ✅              | ❌ (receives data)      |
+
+### 9.3 Key Rules
+
+- **Handlers fetch data** - Use QueryBus to get entities before calling services
+- **Services receive data** - Application services receive data as inputs, don't fetch it
+- **UI-API stays thin** - Just call the command, no business logic
+- **Reduced coupling** - Services don't depend on each other for data retrieval
+
+### 9.4 Example
+
+See the `synapse-cqrs` skill for a complete checklist edit/delete example showing:
+- Thin UI-API wrappers calling domain commands
+- Handlers fetching audit, form, and task list before calling services
+- Application services receiving all data and performing business logic
+---
+alwaysApply: true
+---
