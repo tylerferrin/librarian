@@ -14,6 +14,17 @@ node_modules/
 dist/
 dist-ssr/
 *.local
+*.tsbuildinfo
+
+# Compiled TS alongside source (plate package builds into src/)
+packages/plate/src/**/*.js
+packages/plate/src/**/*.js.map
+packages/plate/src/**/*.d.ts
+
+# Cathedral compiled config
+apps/cathedral/drizzle.config.js
+apps/cathedral/drizzle.config.js.map
+apps/cathedral/drizzle.config.d.ts
 
 # Rust/Cargo
 target/
