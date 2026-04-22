@@ -2,8 +2,13 @@
   "name": "@librarian/plate",
   "version": "0.0.1",
   "private": true,
-  "type": "module",
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
   }
 }
