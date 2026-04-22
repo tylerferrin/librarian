@@ -24,9 +24,9 @@ import { ClearBankCommand } from './commands/clear-bank/clear-bank.command';
 import { ListPresetsQuery } from './queries/list-presets/list-presets.query';
 import { GetPresetQuery } from './queries/get-preset/get-preset.query';
 import { GetBankSlotsQuery } from './queries/get-bank-slots/get-bank-slots.query';
-import type { CreatePresetDto } from './dto/create-preset.dto';
-import type { UpdatePresetDto } from './dto/update-preset.dto';
-import type { ListPresetsDto } from './dto/list-presets.dto';
+import { CreatePresetDto } from './dto/create-preset.dto';
+import { UpdatePresetDto } from './dto/update-preset.dto';
+import { ListPresetsDto } from './dto/list-presets.dto';
 import type { BankSlotDto, PresetDto, PresetWithBanksDto } from './dto/preset.dto';
 
 @Controller('presets')
